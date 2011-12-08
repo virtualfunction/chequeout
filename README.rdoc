@@ -1,0 +1,3 @@
+= Chequeout
+
+A simple and extendable core for developing basic Rails e-commerce systems.

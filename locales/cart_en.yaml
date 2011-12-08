@@ -1,0 +1,12 @@
+en:
+  orders:
+    taxation:
+      item_name: Sales tax
+    shipping:
+      item_name: Shipping costs
+    refund:
+      purchase: Refund for %{item}
+      order: Refund for %{order}
+    cart:
+      items_updated: Items Updated
+      emptied: Cart emptied
