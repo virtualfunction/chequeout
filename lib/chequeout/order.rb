@@ -86,6 +86,11 @@ module Chequeout::Order
     currency.amount '0.00'
   end
   
+  # Mark this as paid
+  def paid!(time = Time.now)
+    update_attribute :payment_date, time
+  end
+  
   # Has a refund of any sort been refunded?
   def refund?
     refunded? or part_refunded? or fully_refunded? 

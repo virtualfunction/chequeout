@@ -74,11 +74,51 @@ module Chequeout::Shipping
     end
   end
   
+  # == Dispatchable Order
+  # Field: tracking_code, dispatch_date
+  module DispatchableOrder
+    when_included do
+      attr_accessor :dispatch_pending
+      register_callback_events :dispatched
+      before_save :trigger_dispatch_if_required
+      Database.register :order_tracking do |table|
+        table.datetime  :dispatch_date
+        table.index    :dispatch_date
+      end
+    end
+    
+    def dispatched?
+      not dispatch_date.nil?
+    end
+
+    # Aliased for form views
+    def dispatched
+      dispatched?
+    end
+    
+    def trigger_dispatch_if_required
+      return :ok if dispatch_pending == dispatched?
+      if dispatch_pending
+        run_callbacks :dispatched do
+          self.dispatch_date = Time.now
+          self.dispatch_pending = nil
+        end
+      else
+        self.dispatch_date = nil
+      end
+    end
+    
+    def dispatched=(state)
+      self.dispatch_pending = not([ '', '0', 'false' ].include? state.to_s.strip)
+    end
+  end
+  
   # == Trackable Order
   # Field: tracking_code
   module TrackableOrder
     when_included do
       include Chequeout::Shipping::Order
+      include Chequeout::Shipping::DispatchableOrder
       Database.register :order_tracking do |table|
         table.string    :tracking_code
         table.datetime  :dispatch_date
@@ -89,7 +129,7 @@ module Chequeout::Shipping
     end
 
     # Use this to add a tracking code. 
-    def dispatch!(tracking_code, date = Time.now)
+    def dispatch_with_tracking!(tracking_code = nil, date = Time.now)
       update_attributes! :tracking_code => tracking_code, :dispatch_date => date
     end
   end
