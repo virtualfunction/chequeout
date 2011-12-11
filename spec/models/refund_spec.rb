@@ -3,8 +3,7 @@ require File.expand_path('../../../spec/spec_helper', __FILE__)
 Refund = Chequeout::Refundable
 
 describe Refund do
-  
-  let(:order) { FactoryGirl.create :filled_basket_order }
+  let(:order) { FactoryGirl.create(:filled_basket_order).spy_on :refund_payment }
   let(:date)  { Time.parse 'January 2015' }
 
   describe Order do
@@ -24,7 +23,7 @@ describe Refund do
     
     describe 'everything' do
       let(:refund) { purchase.refund! }
-      
+
       it 'created an entry' do
         refund.should be_a(FeeAdjustment)
         refund.quantity.should == purchase.quantity
@@ -57,6 +56,11 @@ describe Refund do
     describe 'full' do
       let(:refunds) { order.full_refund! }
       let(:refund)  { refunds.first }
+
+      it 'triggers a refund event' do
+        refund
+        order.event_history[:refund_payment].should == 1
+      end
       
       it 'creates an entry' do 
         refund.should be_a(FeeAdjustment)
@@ -75,6 +79,11 @@ describe Refund do
           :display_name   => 'General refund',
           :processed_date => date,
           :amount         => GBP('4.98')
+      end
+
+      it 'triggers a refund event' do
+        refund
+        order.event_history[:refund_payment].should == 1
       end
       
       it 'creates an entry' do

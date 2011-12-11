@@ -2,24 +2,26 @@ require File.expand_path('../../../spec/spec_helper', __FILE__)
 
 describe Order do
 
-  let(:items) { order.purchase_items }
-  let(:purchase) { items.first }
-  # Our test 'spy' order will record event counts into this
-  let(:history) { Hash.new 0 }
-  # Make this order also double up as an event spy
+  let(:items)     { order.purchase_items }
+  let(:purchase)  { items.first.spy_on :basket_modify }
+  
   let :order do  
-    history.clear
-    item = history # Scoping issue
-    FactoryGirl.create(:filled_basket_order).tap do |order|
-      order.singleton_class.class_eval do 
-        Order.event_list.each do |event|
-          set_callback event, :before do 
-            item[event] += 1
-          end
-        end
-      end
-    end
+    FactoryGirl.create(:filled_basket_order).spy_on \
+      :process_payment, 
+      :completed_payment, 
+      :merchant_processing, 
+      *(Order.event_list.to_a + ADDRESS_EVENTS.keys).uniq
   end
+  
+  ADDRESS_EVENTS = {
+    :create_shipping_address  => 1,
+    :create_billing_address   => 1,
+    :save_shipping_address    => 1,
+    :save_billing_address     => 1,
+    # This happens for each address
+    :create_address           => 2,
+    :save_address             => 2,
+  }.freeze
 
   it 'understands the concept of zero' do
     order.zero.cents.should == 0
@@ -36,30 +38,12 @@ describe Order do
   
   describe 'order total' do
     specify do
-      expect { order.add purchase, :quantity => 1 }.to change { order.reload.sub_total }.by(GBP '9.99')
+      expect { order.add purchase.brought_item, :quantity => 1 }.to change { order.reload.sub_total }.by(GBP '-9.99')
     end
     
     specify do
       expect { purchase.destroy }.to change { order.reload.sub_total }.to(GBP '0.00')
     end
-  end
-  
-  describe 'refund' do
-    before :all do
-      order.singleton_class.class_eval do 
-        def merchant_refund!(amount)
-          true
-        end
-      end
-      order.success!
-      order.refund!
-    end
-    
-    it('is successful') { order.status == 'success' }
-    it('triggers a refund event') { history[:refund_payment].should == 1 }
-    # it 'marks the refund as a fee adjustment' do
-    #   order.fee_adjustments.refund.first.price.should == GBP('-19.98')
-    # end
   end
   
   describe 'checkout' do
@@ -70,9 +54,9 @@ describe Order do
       end
       
       specify { order.status.should == 'success' }
-      specify { history[:process_payment].should == 1 }
-      specify { history[:completed_payment].should == 1 }
-      specify { history[:merchant_processing].should == 0 }
+      specify { order.event_history[:process_payment].should == 1 }
+      specify { order.event_history[:completed_payment].should == 1 }
+      specify { order.event_history[:merchant_processing].should == 0 }
     end
 
     describe 'merchant processing failure' do
@@ -82,32 +66,18 @@ describe Order do
       end
 
       specify { order.status.should == 'failed' }
-      specify { history[:process_payment].should == 1 }
-      specify { history[:failed_payment].should == 1 }
-      specify { history[:merchant_processing].should == 1 }
+      specify { order.event_history[:process_payment].should == 1 }
+      specify { order.event_history[:failed_payment].should == 1 }
+      specify { order.event_history[:merchant_processing].should == 1 }
     end
     
     describe '`basket modify` event' do
-      # Make this putchase also do event spy ops
-      let :historic_purchase do
-        history.clear
-        item = history # Scoping issue
-        purchase.singleton_class.class_eval do 
-          PurchaseItem.event_list.each do |event|
-            set_callback event, :before do 
-              item[event] += 1
-            end
-          end
-        end
-        purchase
-      end
-
       before :each do
-        historic_purchase.update_attributes :quantity => 3
-        historic_purchase.destroy
+        purchase.update_attributes :quantity => 3
+        purchase.destroy
       end
       
-      specify { history[:basket_modify].should == 2 }
+      specify { purchase.event_history[:basket_modify].should == 2 }
     end
     
     describe 'address events' do
@@ -119,15 +89,7 @@ describe Order do
       end
       
       it 'triggers events' do
-        events = {
-          :create_shipping_address => 1,
-          :create_billing_address => 1,
-          :save_shipping_address => 1,
-          :save_billing_address => 1,
-          :create_address => 2,
-          :save_address => 2,
-        }
-        history.slice(*events.keys).should == events
+        order.event_history.slice(*ADDRESS_EVENTS.keys).should == ADDRESS_EVENTS
       end
     end
   end

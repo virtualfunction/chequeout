@@ -81,13 +81,6 @@ module Chequeout::Address
 
     belongs_to :addressable, :polymorphic => true
 
-    # Hook in change callback wrappers
-    [ :save, :create, :update, :destroy ].each do |action|
-      event    = ('around_%s' % action).to_sym
-      callback = ('%s_address_notification' % action).to_sym
-      __send__ event, callback
-    end
-
     # Extra scopes
     purposes.each do |purpose|
       scope purpose, by_purpose(purpose)
@@ -108,6 +101,7 @@ module Chequeout::Address
     
     # Notification / callback wrappers
     [ :save, :create, :update, :destroy ].each do |action|
+      # Create create_address, create_shipping_address etc
       class_eval <<-METHOD, __FILE__, __LINE__ + 1
         def #{action}_address_notification
           if addressable
@@ -124,9 +118,15 @@ module Chequeout::Address
           end
         end
       METHOD
+      # Register the events we created to the newly created method above
+      event    = ('around_%s' % action).to_sym
+      callback = ('%s_address_notification' % action).to_sym
+      __send__ event, callback
     end
+
   end
   
+  # Physical location
   LOCATION_FIELDS = [ 
     :building, 
     :street, 
@@ -136,6 +136,7 @@ module Chequeout::Address
     :postal_code
   ].freeze
   
+  # Contact fields and name
   CONTACT_FIELDS = [
     :email,
     :phone,
@@ -153,11 +154,13 @@ module Chequeout::Address
   def lines
     LOCATION_FIELDS.collect { |field| __send__ field }.reject &:blank?
   end
-  
+
+  # Details as a hash table
   def details
     attributes.slice *DETAIL_FIELDS.collect(&:to_s)
   end
   
+  # Copy fields from another address
   def copy_from(other)
     self.attributes = other.details
   end

@@ -144,7 +144,7 @@ module Chequeout::Offer
       belongs_to :by_discounted_item, :polymorphic => true
 
       Database.register :fee_adjustments do |table|
-        table.references :by_discounted_item, :polymorphic => true
+        table.references :discounted_item, :polymorphic => true
       end
     end
   end
@@ -245,7 +245,7 @@ module Chequeout::Offer
 
   Criteria.new :product_specific do 
     filter do 
-      order.contains? discounted_item and not product_specific_coupon_used? if order and try :discounted_product
+      order.has? discounted_item and not product_specific_coupon_used? if order and try :discounted_item
     end
     
     define_method :product_specific_coupon_used? do

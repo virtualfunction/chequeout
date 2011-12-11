@@ -11,7 +11,7 @@ module Chequeout::Product
     
     validates :price, :display_name, :presence => true
     
-    Money.composition_on self, :price # if table_exists? and column_names.include? 'price_amount'
+    Money.composition_on self, :price
     ::PurchaseItem.related_to self
   end
 end

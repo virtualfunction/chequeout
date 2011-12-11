@@ -78,15 +78,17 @@ module Chequeout::Shipping
   # Field: tracking_code, dispatch_date
   module DispatchableOrder
     when_included do
+      scope :dispatched, lambda { |*state| where 'dispatch_date IS %s NULL' % ('NOT' if state.push(true).shift) }
       attr_accessor :dispatch_pending
       register_callback_events :dispatched
       before_save :trigger_dispatch_if_required
       Database.register :order_tracking do |table|
         table.datetime  :dispatch_date
-        table.index    :dispatch_date
+        table.index     :dispatch_date
       end
     end
     
+    # Dispatched, based on dispatch date being present
     def dispatched?
       not dispatch_date.nil?
     end
@@ -96,6 +98,7 @@ module Chequeout::Shipping
       dispatched?
     end
     
+    # Callback: Trigger a dispatch event
     def trigger_dispatch_if_required
       return :ok if dispatch_pending == dispatched?
       if dispatch_pending
@@ -108,6 +111,12 @@ module Chequeout::Shipping
       end
     end
     
+    # Mark as dispatched now
+    def dispatched!
+      update_attributes :dispatched => true
+    end
+    
+    # Dispatched, true or false (can cast from string)
     def dispatched=(state)
       self.dispatch_pending = not([ '', '0', 'false' ].include? state.to_s.strip)
     end
@@ -117,20 +126,21 @@ module Chequeout::Shipping
   # Field: tracking_code
   module TrackableOrder
     when_included do
+      scope :by_tracking_code, lambda { |code| where :tracking_code => tracking_code }
       include Chequeout::Shipping::Order
       include Chequeout::Shipping::DispatchableOrder
       Database.register :order_tracking do |table|
         table.string    :tracking_code
-        table.datetime  :dispatch_date
-        [ :tracking_code, :dispatch_date ].each do |field|
-          table.index field
-        end
+        table.index     :tracking_code
       end
     end
 
     # Use this to add a tracking code. 
     def dispatch_with_tracking!(tracking_code = nil, date = Time.now)
-      update_attributes! :tracking_code => tracking_code, :dispatch_date => date
+      update_attributes! \
+        :tracking_code  => tracking_code, 
+        :dispatch_date  => date, 
+        :dispatched     => not(date.nil?)
     end
   end
   

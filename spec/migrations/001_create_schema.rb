@@ -1,7 +1,6 @@
 class CreateSchema < ActiveRecord::Migration
   def change
     with_options :force => true do |database|
-      y Chequeout::Database.actions
       database.create_table :addresses do |table|
         table.chequeout   :addressable
       end

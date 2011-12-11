@@ -20,7 +20,7 @@ describe Inventory do
 
     let(:order) { FactoryGirl.create :filled_basket_order }
     let(:purchase) { order.purchase_items.first }
-    let(:item) { purchase.brought_item }
+    let(:item) { purchase.brought_item.spy_on *Product.event_list }
 
     it 'has managed products' do
       item.should be_kind_of(Inventory::ItemManagement)
@@ -43,29 +43,16 @@ describe Inventory do
     end
 
     describe 'events' do 
-      history = Hash.new 0
-      
-      before :all do
-        item.singleton_class.class_eval do 
-          Product.event_list.each do |event|
-            set_callback event, :before do 
-              history[event] += 1
-            end
-          end
-        end
-        history.clear
+      it 'triggers an `out_of_stock` event' do
+        item.update_attribute :stock_levels, 1
+        item.stock_levels = 0
+        item.event_history[:out_of_stock].should == 1
       end
       
-      it 'triggers an `out_of_stock` event' do
-        item.stock_levels.should > 0
-        item.stock_levels = 0
-        history[:out_of_stock].should == 1
-      end      
-      
       it 'triggers a `stock_replenished` event' do
-        item.stock_levels.should < 1
+        item.update_attribute :stock_levels, 0
         item.stock_levels = 1
-        history[:stock_replenished].should == 1
+        item.event_history[:stock_replenished].should == 1
       end
     end
   end

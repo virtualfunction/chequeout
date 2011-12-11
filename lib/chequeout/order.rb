@@ -223,26 +223,12 @@ module Chequeout::Order
     self[:uid] ||= Digest::SHA1.hexdigest(id.to_s)[0...8]
   end
   
-  # Process a refund, assume order total if value not supplied
-  def refund!(settings = Hash.new)
-    message = settings[:message]  || I18n.translate('orders.refund.order', :order => uid)
-    amount  = settings[:amount]   || total_price
-    return unless success? and amount and amount.cents > 0
-    ok = false
-    transaction do
-      run_callbacks :refund_payment do
-        ok = merchant_refund! amount
-        yield if block_given? and ok
-      end
-    end
-    ok
-  end
-  
   # Sum up purchases and adjustments
   def calculated_total
     sub_total + sum_prices(fee_adjustments.collect(&:price))
   end
   
+  # Total of all items, excluding adjustments
   def sub_total
     sum_prices purchase_items.collect(&:total_price)
   end
@@ -283,16 +269,12 @@ module Chequeout::Order
     raise 'Merchant processing needs to be implenmenting'
   end
   
-  # Go through merchant refund process, returns boolean status
-  def merchant_refund!(amount)
-    raise 'Merchant refund needs to be implenmenting'
-  end
-  
   # Do not let a order go through unless it's got items
   def ensure_not_empty!
     errors.add :base, basket_must_contain_items if purchase_items.empty?
   end
 
+  # Text for empty basket error
   def basket_must_contain_items
     I18n.translate 'orders.errors.empty_basket'
   end

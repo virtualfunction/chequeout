@@ -114,6 +114,7 @@ module Chequeout::PurchaseItem
     self.display_name = brought_item.try :display_name
   end
   
+  # Price based on quantity
   def total_price
     unit_price * quantity
   end
