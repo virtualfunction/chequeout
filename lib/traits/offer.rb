@@ -29,20 +29,29 @@ module Chequeout::Offer
       end
 
       validates :summary, :discount, :presence => true
-      ::FeeAdjustment.related_to self
       register_callback_events :apply_to_order
+      ::FeeAdjustment.related_to self
       ::Money.composition_on self, :discount
       attr_accessor :order
+      
+      scope :by_discount_code, lambda { |text| 
+        where :discount_code => text.to_s.strip
+      }
     end
     
     # Add the coupon adjustment if we're allowed to apply it
     def apply_to(order)
       return unless applicable_for? order
-      set_basket order do
+      with_cart order do
         run_callbacks :apply_to_order do
           redeem_coupon!
         end
       end
+    end
+    
+    # Discount code exists?
+    def discount_code?
+      discount_code.present?
     end
     
     # Work out discount based on strategy
@@ -56,6 +65,7 @@ module Chequeout::Offer
       @coupon ||= begin
         details = {
           :related_adjustment_item => self,
+          :discount_code => discount_code, 
           :display_name => summary, 
           :purpose => 'coupon',
           :price => calculated_discount * -1, # Money doesn't have negate unary method
@@ -74,22 +84,17 @@ module Chequeout::Offer
     # Is this coupon valid for a given order?
     def applicable_for?(order)
       return false if order_adjustments.by_order(order).count > 0
-      set_basket order do 
+      with_cart order do 
         run_callbacks :order_applicable do
           true
         end
       end
     end
 
-    # Adjustments made by coupons
-    def order_coupons
-      order.fee_adjustments.coupon
-    end
-
     protected
     
     # Set the basket for scope of this method
-    def set_basket(basket)
+    def with_cart(basket)
       old = order
       self.order = basket
       yield
@@ -124,6 +129,42 @@ module Chequeout::Offer
     scope :by_discounted_item, lambda { |item|
       by_discounted_item_type(item.class).where :discounted_item_id => item.id
     }
+  end
+
+  # == Look up coupons by code for orders via virtual atttributes
+  module Order
+    when_included do
+      attr_accessor :pending_coupon_code
+      after_save    :apply_pending_coupon
+    end
+    
+    # Get fee adjustements marked as coupons
+    def coupons
+      fee_adjustments.coupon
+    end
+    
+    # Get first coupon with discount code
+    def coupon_code
+      coupons.detect(&:discount_code?).try :discount_code
+    end
+    
+    # Assign a coupon code to be applied
+    def coupon_code=(text)
+      self.pending_coupon_code = text.to_s.strip
+    end
+    
+    # Callback, applies coupon on save
+    def apply_pending_coupon
+      unless pending_coupon_code.blank? or coupon_code == pending_coupon_code
+        promotion = Promotion.by_discount_code(pending_coupon_code).first 
+        promotion.apply_to self if promotion
+        :ok
+      else
+        :skipped
+      end
+    ensure
+      self.pending_coupon_code = nil
+    end
   end
 
   # == Add to FeeAdjustment if using discount code
@@ -249,7 +290,7 @@ module Chequeout::Offer
     end
     
     define_method :product_specific_coupon_used? do
-      order_coupons.by_discounted_item(discounted_item).count > 0
+      order.coupons.by_discounted_item(discounted_item).count > 0
     end
     
     when_included &DISCOUNT_SCOPES
@@ -264,7 +305,19 @@ module Chequeout::Offer
   
   Criteria.new :discount_code do 
     filter do 
+      (applies_with_coupon_code? or applies_with_offer_token?) and not applied_alredy?
+    end
+    
+    define_method :applies_with_offer_token? do
       offer_tokens.by_discount_code(discount_code).count > 0 unless try(:discount_code).blank?
+    end
+    
+    define_method :applies_with_coupon_code? do
+      order.pending_coupon_code == discount_code
+    end
+    
+    define_method :applied_alredy? do
+      order.coupons.any? { |item| item.discount_code == discount_code }
     end
     
     define_method :offer_tokens do 

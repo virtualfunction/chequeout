@@ -1,5 +1,6 @@
 class Order < ActiveRecord::Base
   include Chequeout::Order
+  include Chequeout::Offer::Order
   include Chequeout::Shipping::TrackableOrder
   include Chequeout::Shipping::CalculateByWeight
   include Chequeout::Taxation::Order

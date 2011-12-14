@@ -20,6 +20,8 @@ ActiveRecord::Base.establish_connection \
   :adapter  => 'sqlite3',
   :timeout  => 5000
 
+ActiveRecord::Base.logger = Logger.new StringIO.new
+
 # Load support files and migrate
 ActiveSupport::Dependencies.autoload_paths << ROOT + '/../spec/support'
 Dir[ROOT + '/../spec/{factories,support}/**/*.rb'].each { |file| require_dependency file }

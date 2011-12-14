@@ -90,12 +90,19 @@ describe Promotion do
       before { promotion.discount_code = 'DiscountMe!' }
       include_examples 'does not apply to order'
       
-      describe 'applies' do
+      describe 'applies - using adjustment token' do
         before do 
           order.fee_adjustments.offer_token.create! \
             :discount_code  => promotion.discount_code, 
             :display_name   => 'Special discount code',
             :price          => GBP('1.00')
+        end
+        include_examples 'applies to order'
+      end
+
+      describe 'applies - using coupon code' do
+        before do 
+          order.coupon_code = promotion.discount_code
         end
         include_examples 'applies to order'
       end
