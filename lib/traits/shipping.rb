@@ -70,7 +70,7 @@ module Chequeout::Shipping
     
     # pre-calculated shipping total
     def shipping_total
-      shipping_scope.collect(&:price).sum
+      shipping_scope.collect(&:price).push(zero).sum
     end
   end
   
@@ -100,7 +100,7 @@ module Chequeout::Shipping
     
     # Callback: Trigger a dispatch event
     def trigger_dispatch_if_required
-      return :ok if dispatch_pending == dispatched?
+      return :ok if dispatch_pending.nil? or dispatch_pending == dispatched? 
       if dispatch_pending
         run_callbacks :dispatched do
           self.dispatch_date = Time.now
