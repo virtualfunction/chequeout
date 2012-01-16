@@ -13,7 +13,8 @@ module EventSpy
     options = events.extract_options!
     @_event_history = options[:history] || event_history
     # Iterate events, skipping ones we already watch
-    (events - events_watched.to_a).uniq.each do |event|
+    (events - events_watched.to_a).uniq.each do |item|
+      event = item.to_sym
       events_watched << event
       # Hook in a callback, but just for this object
       self.singleton_class.class_eval do

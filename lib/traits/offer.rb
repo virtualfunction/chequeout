@@ -135,7 +135,14 @@ module Chequeout::Offer
   module Order
     when_included do
       attr_accessor :pending_coupon_code
-      after_save    :apply_pending_coupon
+      after_save    :remove_non_applicable_coupons, :apply_pending_coupon
+    end
+    
+    # Remove any coupons that do not apply
+    def remove_non_applicable_coupons
+      coupons.each do |coupon|
+        # coupon.destroy unless coupon.promotion.applies_to? order
+      end
     end
     
     # Get fee adjustements marked as coupons
@@ -153,14 +160,22 @@ module Chequeout::Offer
       self.pending_coupon_code = text.to_s.strip
     end
     
+    # Remove coupon
+    def remove_coupon
+      coupons.detect(&:discount_code?).each &:destroy
+    end
+    
     # Callback, applies coupon on save
     def apply_pending_coupon
-      unless pending_coupon_code.blank? or coupon_code == pending_coupon_code
+      if pending_coupon_code == ''
+        remove_coupon
+        :coupon_removed
+      elsif pending_coupon_code.present? and not coupon_code == pending_coupon_code
         promotion = Promotion.by_discount_code(pending_coupon_code).first 
         promotion.apply_to self if promotion
-        :ok
+        :coupon_applied
       else
-        :skipped
+        :coupon_skipped
       end
     ensure
       self.pending_coupon_code = nil
