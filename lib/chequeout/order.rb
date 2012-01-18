@@ -10,7 +10,7 @@ module Chequeout::Order
   module ClassMethods
     # List of allow order statuses. Can be appended with Order.status_list << 'order_state'
     def status_list
-      @status_list ||= %w[ part_refunded fully_refunded success pending failed cancelled refunded basket ]
+      @status_list ||= %w[ refund_requested part_refunded fully_refunded success pending failed cancelled refunded basket ]
     end
   end
 
