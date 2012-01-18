@@ -141,7 +141,7 @@ module Chequeout::Offer
     # Remove any coupons that do not apply
     def remove_non_applicable_coupons
       coupons.each do |coupon|
-        # coupon.destroy unless coupon.promotion.applies_to? order
+        coupon.destroy unless coupon.related_adjustment_item.applicable_for? self
       end
     end
     
@@ -162,7 +162,7 @@ module Chequeout::Offer
     
     # Remove coupon
     def remove_coupon
-      coupons.detect(&:discount_code?).each &:destroy
+      coupons.select(&:discount_code?).each &:destroy
     end
     
     # Callback, applies coupon on save
@@ -320,7 +320,7 @@ module Chequeout::Offer
   
   Criteria.new :discount_code do 
     filter do 
-      (applies_with_coupon_code? or applies_with_offer_token?) and not applied_alredy?
+      (applies_with_coupon_code? or applies_with_offer_token?) # and not applied_alredy?
     end
     
     define_method :applies_with_offer_token? do
