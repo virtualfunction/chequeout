@@ -157,7 +157,7 @@ module Chequeout::Offer
     # Remove any coupons that do not apply
     def remove_non_applicable_coupons
       coupons.each do |coupon|
-        coupon.destroy unless coupon.related_adjustment_item.applicable_for? self, :skip_redeemed => true
+        coupon.destroy if basket? and not coupon.related_adjustment_item.applicable_for? self, :skip_redeemed => true
       end
     end
     
