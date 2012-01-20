@@ -33,6 +33,7 @@ module Chequeout::Offer
       ::FeeAdjustment.related_to self
       ::Money.composition_on self, :discount
       attr_accessor :order
+      attr_reader   :offer_options
       
       scope :by_discount_code, lambda { |text| 
         where :discount_code => text.to_s.strip
@@ -40,9 +41,9 @@ module Chequeout::Offer
     end
     
     # Add the coupon adjustment if we're allowed to apply it
-    def apply_to(order)
+    def apply_to(order, options = Hash.new)
       return unless applicable_for? order
-      with_cart order do
+      with_cart order, options do
         run_callbacks :apply_to_order do
           redeem_coupon!
         end
@@ -54,25 +55,24 @@ module Chequeout::Offer
       discount_code.present?
     end
     
-    # Work out discount based on strategy
+    # Work out discount based on strategy, default to fixed
     def calculated_discount
       code = DiscountStrategy.registry[discount_strategy.to_sym || :fixed] 
       (code) ? instance_eval(&code) : order.zero
     end
 
-    # Create a new coupon instance
+    # Create a new coupon instance, if not done already
     def redeem_coupon!
       @coupon ||= begin
         details = {
-          :related_adjustment_item => self,
-          :discount_code => discount_code, 
-          :display_name => summary, 
-          :purpose => 'coupon',
-          :price => calculated_discount * -1, # Money doesn't have negate unary method
-          :order => order,
+          :related_adjustment_item  => self,
+          :discount_code            => discount_code,
+          :display_name             => summary,
+          :purpose                  => 'coupon',
+          :price                    => calculated_discount * -1, # Money doesn't have negate unary method
+          :order                    => order,
         }.merge coupon_details
         FeeAdjustment.create! details
-        # order_adjustments.build details
       end
     end
     
@@ -82,11 +82,13 @@ module Chequeout::Offer
     end
     
     # Is this coupon valid for a given order?
-    def applicable_for?(order)
-      return false if order_adjustments.by_order(order).count > 0
-      with_cart order do 
+    def applicable_for?(order, options = Hash.new)
+      # See if this has been redeemed as a coupon for this promotion
+      return false if order_adjustments.by_order(order).count > 0 and not options[:skip_redeemed]
+      # Check each of the criteria
+      with_cart order, options do
         run_callbacks :order_applicable do
-          true
+          :ok
         end
       end
     end
@@ -94,15 +96,19 @@ module Chequeout::Offer
     protected
     
     # Set the basket for scope of this method
-    def with_cart(basket)
+    def with_cart(basket, options = Hash.new)
       old = order
+      old_options = offer_options
       self.order = basket
+      @offer_options = options
       yield
     ensure
+      @offer_options = old_options
       self.order = old
     end
   end
   
+  # Registry to hold list of criteria items
   module Criteron
     class << self
       # Registry for criteria
@@ -131,6 +137,16 @@ module Chequeout::Offer
     }
   end
 
+  module Purchase
+    when_included do
+      after_destroy :check_coupons
+    end
+    
+    def check_coupons
+      order.remove_non_applicable_coupons
+    end
+  end
+
   # == Look up coupons by code for orders via virtual atttributes
   module Order
     when_included do
@@ -141,7 +157,7 @@ module Chequeout::Offer
     # Remove any coupons that do not apply
     def remove_non_applicable_coupons
       coupons.each do |coupon|
-        coupon.destroy unless coupon.related_adjustment_item.applicable_for? self
+        coupon.destroy unless coupon.related_adjustment_item.applicable_for? self, :skip_redeemed => true
       end
     end
     
@@ -160,9 +176,10 @@ module Chequeout::Offer
       self.pending_coupon_code = text.to_s.strip
     end
     
-    # Remove coupon
+    # Remove coupon and offer tokens
     def remove_coupon
       coupons.select(&:discount_code?).each &:destroy
+      fee_adjustments.offer_token.destroy_all
     end
     
     # Callback, applies coupon on save
@@ -211,6 +228,7 @@ module Chequeout::Offer
     @strategy[name] = code
   end
   
+  # Registry for different discount techniques
   class DiscountStrategy
     class << self
       
@@ -224,10 +242,12 @@ module Chequeout::Offer
     end
   end
   
+  # Percentage discount, like 20%
   DiscountStrategy.new :percentage do
-    order.sub_total * (discount_amount / 100.0) 
+    order.sub_total * (1 - (discount_amount / 100.0))
   end
   
+  # Fixed amount in given currency
   DiscountStrategy.new :fixed do
     discount
   end
@@ -320,21 +340,25 @@ module Chequeout::Offer
   
   Criteria.new :discount_code do 
     filter do 
-      (applies_with_coupon_code? or applies_with_offer_token?) # and not applied_alredy?
+      offer_options[:skip_redeemed] or ((applies_with_coupon_code? or applies_with_offer_token?) and not applied_alredy?)
     end
     
+    # Check with offer token (FeeAdjustment)
     define_method :applies_with_offer_token? do
       offer_tokens.by_discount_code(discount_code).count > 0 unless try(:discount_code).blank?
     end
     
+    # See if this has been entered using the order virtual accessor
     define_method :applies_with_coupon_code? do
       order.pending_coupon_code == discount_code
     end
     
+    # Scan for matching codes
     define_method :applied_alredy? do
       order.coupons.any? { |item| item.discount_code == discount_code }
     end
     
+    # Offer tokens are fee adjustments that simply hold the coupon code
     define_method :offer_tokens do 
       order.fee_adjustments.offer_token
     end

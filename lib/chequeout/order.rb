@@ -10,7 +10,17 @@ module Chequeout::Order
   module ClassMethods
     # List of allow order statuses. Can be appended with Order.status_list << 'order_state'
     def status_list
-      @status_list ||= %w[ refund_requested part_refunded fully_refunded success pending failed cancelled refunded basket ]
+      @status_list ||= %w[ 
+        refund_requested
+        part_refunded
+        fully_refunded
+        success
+        pending
+        failed
+        cancelled
+        refunded
+        basket
+      ]
     end
   end
 
@@ -73,7 +83,6 @@ module Chequeout::Order
     validates :session_uid, :status, :presence => true
     validates :billing_address, :presence => true, :associated => true, :unless => :basket?
     validates :status, :inclusion => { :in => status_list }, :allow_nil => true
-    validates :session_uid, :uniqueness => true unless Rails.env.test?
     validate  :ensure_not_empty!, :unless => :basket?
 
     attr_writer :currency

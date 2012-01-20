@@ -6,16 +6,18 @@ module Chequeout::FeeAdjustment
     # Different reasons / purposes for the adjustment
     def purposes
       @purposes ||= Set.new %w[ 
-        tax 
-        shipping 
+        tax
+        shipping
         offer_token
         manual_alteration
-        coupon 
-        discount 
-        layaway_payment 
-        refund ]
+        coupon
+        discount
+        layaway_payment
+        refund
+      ]
     end
 
+    # Set up associations
     def related_to(klass)
       klass.class_eval do
         has_many :order_adjustments, 
