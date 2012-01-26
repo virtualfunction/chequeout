@@ -152,6 +152,8 @@ module Chequeout::Offer
     when_included do
       attr_accessor :pending_coupon_code
       after_save    :remove_non_applicable_coupons, :apply_pending_coupon
+      scope         :by_promotion, lambda { |item| joins(:fee_adjustments).merge ::FeeAdjustment.by_item(item) }
+      scope         :by_promotion_id, lambda { |id| joins(:fee_adjustments).merge ::FeeAdjustment.by_item(Promotion.find(id)) }
     end
     
     # Remove any coupons that do not apply
