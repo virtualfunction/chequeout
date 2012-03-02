@@ -246,7 +246,7 @@ module Chequeout::Offer
   
   # Percentage discount, like 20%
   DiscountStrategy.new :percentage do
-    order.sub_total * (1 - (discount_amount / 100.0))
+    order.sub_total * (discount_amount / 100.0)
   end
   
   # Fixed amount in given currency

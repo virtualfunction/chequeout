@@ -42,7 +42,7 @@ describe Shipping do
       order.event_history[:dispatched].should == 1
     end
   end
-  
+
   describe 'tracking' do
     it 'can be record a tracking code' do
       order.dispatch_with_tracking! 'ABC'

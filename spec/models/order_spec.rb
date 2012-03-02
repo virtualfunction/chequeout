@@ -2,17 +2,6 @@ require File.expand_path('../../../spec/spec_helper', __FILE__)
 
 describe Order do
 
-  let(:items)     { order.purchase_items }
-  let(:purchase)  { items.first.spy_on :basket_modify }
-  
-  let :order do  
-    FactoryGirl.create(:filled_basket_order).spy_on \
-      :process_payment, 
-      :completed_payment, 
-      :merchant_processing, 
-      *(Order.event_list.to_a + ADDRESS_EVENTS.keys).uniq
-  end
-  
   ADDRESS_EVENTS = {
     :create_shipping_address  => 1,
     :create_billing_address   => 1,
@@ -23,6 +12,19 @@ describe Order do
     :save_address             => 2,
   }.freeze
 
+  let(:items)     { order.purchase_items }
+  let(:purchase)  { items.first.spy_on :basket_modify }
+  
+  y [ :ADDRESS, ADDRESS_EVENTS.keys ]
+  
+  let :order do  
+    FactoryGirl.create(:filled_basket_order).spy_on \
+      :process_payment, 
+      :completed_payment, 
+      :merchant_processing, 
+      *(Order.event_list.to_a + ADDRESS_EVENTS.keys).collect(&:to_sym).uniq
+  end
+  
   it 'understands the concept of zero' do
     order.zero.cents.should == 0
   end

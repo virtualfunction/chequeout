@@ -65,7 +65,7 @@ module Chequeout::PurchaseItem
 
     register_callback_events :basket_modify
     Money.composition_on self, :price
-
+    
     belongs_to  :order
     belongs_to  :brought_item, :polymorphic => true
 
