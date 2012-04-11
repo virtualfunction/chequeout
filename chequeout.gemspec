@@ -21,5 +21,5 @@ Gem::Specification.new do |gem|
   gem.add_dependency 'activesupport', '>= 3'
   gem.add_dependency 'activerecord',  '>= 3'
   gem.add_dependency 'acts_as_list'
-  gem.add_dependency 'money'
+  gem.add_dependency 'money',         '>= 5'
 end

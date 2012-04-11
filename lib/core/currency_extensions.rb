@@ -37,9 +37,13 @@ module Chequeout::Core::CurrencyExtensions
     
     # Setup curency methods for all currencies
     def setup_all_currencies
-      Money::Currency::TABLE.keys.each do |iso|
+      currencies_list.keys.each do |iso|
         setup iso
       end
+    end
+    
+    def currencies_list
+      @currencies_list ||= CurrencyLoader.load_currencies rescue Money::Currency::TABLE
     end
   end
   
