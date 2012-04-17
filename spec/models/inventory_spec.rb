@@ -17,9 +17,6 @@ describe Inventory do
   end
   
   describe 'processing' do
-
-    y [ :EVENT_LIST, Product.event_list ]
-
     let(:order) { FactoryGirl.create :filled_basket_order }
     let(:purchase) { order.purchase_items.first }
     let(:item) { purchase.brought_item.spy_on *Product.event_list }

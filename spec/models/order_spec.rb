@@ -15,8 +15,6 @@ describe Order do
   let(:items)     { order.purchase_items }
   let(:purchase)  { items.first.spy_on :basket_modify }
   
-  y [ :ADDRESS, ADDRESS_EVENTS.keys ]
-  
   let :order do  
     FactoryGirl.create(:filled_basket_order).spy_on \
       :process_payment, 

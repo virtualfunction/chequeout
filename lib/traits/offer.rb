@@ -128,15 +128,6 @@ module Chequeout::Offer
     end
   end
   
-  DISCOUNT_SCOPES = proc do
-    scope :by_discounted_item_type, lambda { |klass|
-      where :discounted_item_type => klass.try(:base_class) || klass.to_s
-    }
-    scope :by_discounted_item, lambda { |item|
-      by_discounted_item_type(item.class).where :discounted_item_id => item.id
-    }
-  end
-
   module Purchase
     when_included do
       after_destroy :check_coupons
@@ -146,13 +137,31 @@ module Chequeout::Offer
       order.remove_non_applicable_coupons
     end
   end
+  
+  module PromotionDiscountableItem
+    when_included do
+      belongs_to :promotion
+      belongs_to :discounted, :polymorphic => true
+
+      Database.register :promotional_discount_items do |table|
+        table.belongs_to  :promotion
+        table.belongs_to  :discounted, :polymorphic => true
+      end
+
+      validates :promotion, :discounted, :presence => true
+      # Make sure this is unique for both items
+      validates :promotion_id, :uniqueness => { :scope => [ :discounted_id, :discounted_type ] }
+      validates :discounted_id, :uniqueness => { :scope => [ :promotion_id, :discounted_type ] }
+      validates :discounted_type, :uniqueness => { :scope => [ :discounted_id, :promotion_id ] }
+    end
+  end
 
   # == Look up coupons by code for orders via virtual atttributes
   module Order
     when_included do
       attr_accessor :pending_coupon_code
       after_save    :remove_non_applicable_coupons, :apply_pending_coupon
-      scope         :by_promotion, lambda { |item| joins(:fee_adjustments).merge ::FeeAdjustment.by_item(item) }
+      scope         :by_promotion, lambda { |item| joins(:fee_adjustments).merge  ::FeeAdjustment.by_item(item) }
       scope         :by_promotion_id, lambda { |id| joins(:fee_adjustments).merge ::FeeAdjustment.by_item(Promotion.find(id)) }
     end
     
@@ -205,6 +214,12 @@ module Chequeout::Offer
   module DiscountCodeAdjustment
     when_included do
       scope :by_discount_code, lambda { |code| where :discount_code => code }
+      scope :by_discounted_item_type, lambda { |klass|
+        where :discounted_item_type => klass.try(:base_class) || klass.to_s
+      }
+      scope :by_discounted_item, lambda { |item|
+        by_discounted_item_type(item.class).where :discounted_item_id => item.id
+      }
       Database.register :fee_adjustments do |table|
         table.string :discount_code
         table.index  :discount_code
@@ -212,18 +227,6 @@ module Chequeout::Offer
     end
   end
 
-  # == Add to FeeAdjustment if using discounted product
-  module DiscountedProductAdjustment
-    when_included &DISCOUNT_SCOPES
-    when_included do
-      belongs_to :by_discounted_item, :polymorphic => true
-
-      Database.register :fee_adjustments do |table|
-        table.references :discounted_item, :polymorphic => true
-      end
-    end
-  end
-  
   # Define a strategy for creating discounts to orders
   def self.discount_strategy(name, &code)
     @strategy ||= Hash.new
@@ -277,6 +280,12 @@ module Chequeout::Offer
     # Define the logic to see if promotion applies. This returns false to 
     # prevent a promotion being seen as valid, much like Rails filters and 
     # validations
+    # 
+    # This runs in the context/scope of the promotion, and 'order' acts as a 
+    # temporary accessor to the order in question
+    #
+    # The filter is turned into a method behind the scenes, which can be handy 
+    # for debugging
     def filter(&code)
       criteria = '%s_criteria' % name
       define_method criteria, &code
@@ -321,22 +330,28 @@ module Chequeout::Offer
     end
   end
 
-  Criteria.new :product_specific do 
-    filter do 
-      order.has? discounted_item and not product_specific_coupon_used? if order and try :discounted_item
+  Criteria.new :item_specific do
+    # NB: This code is a bit shit (aka hideously inefficient, but probably doesn't matter for now)
+    filter do
+      discounted = discounted_items
+      # Set insection order purchases and promotion discount items
+      products = discounted.select do |item|
+        order.has? item
+      end
+      # Promotion is valid if no products have any coupon used (or no products)
+      valid = products.all? do |product|
+        order.coupons.by_discounted_item(product).count.zero?
+      end
+      valid and not products.size.zero? unless discounted.size.zero?
     end
     
-    define_method :product_specific_coupon_used? do
-      order.coupons.by_discounted_item(discounted_item).count > 0
+    define_method :discounted_items do
+      promotion_discount_items.collect &:discounted
     end
     
-    when_included &DISCOUNT_SCOPES
     when_included do
-      belongs_to :discounted_item, :polymorphic => true
-    end
-    
-    database do |table|
-      table.references  :discounted_item, :polymorphic => true
+      attr_accessor :debugging
+      has_many :promotion_discount_items, :dependent => :destroy, :inverse_of => :promotion
     end
   end
   

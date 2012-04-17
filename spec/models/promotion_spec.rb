@@ -6,11 +6,11 @@ describe Promotion do
   
   [ Order, Product, Promotion ].each &:destroy_all
   let(:order) { FactoryGirl.create :filled_basket_order }
-  let(:promotion) { FactoryGirl.build :promotion }
+  let(:promotion) { FactoryGirl.create :promotion }
 
   specify { Promotion.should be < Offer::Promotional }
-  specify { FeeAdjustment.should be < Offer::DiscountedProductAdjustment }
   specify { FeeAdjustment.should be < Offer::DiscountCodeAdjustment }
+  specify { PromotionDiscountItem.should be < Offer::PromotionDiscountableItem }
 
   describe 'offer discount' do
     let(:coupons) { order.fee_adjustments.coupon }
@@ -70,17 +70,17 @@ describe Promotion do
     end
 
     describe 'product specific' do
-      before do
-        promotion.discounted_item = FactoryGirl.create :product, :display_name => 'Another item'
-      end
+      let(:discounted) { FactoryGirl.create :product, :display_name => 'Another item' }
       
-      pending do # Broken
-        include_examples 'does not apply to order'
+      before do
+        promotion.promotion_discount_items.create! :discounted => discounted
       end
+
+      include_examples 'does not apply to order'
       
       describe 'applies' do
         before do 
-          order.add promotion.discounted_item, :quantity => 2
+          order.add discounted, :quantity => 2
         end
         include_examples 'applies to order'
       end

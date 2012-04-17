@@ -73,12 +73,13 @@ describe Refund do
     end
     
     describe 'general' do
+      let(:total)   { order.calculated_total }
       let(:refunds) { order.fee_adjustments.refund }
       let :refund do
         order.general_refund! \
           :display_name   => 'General refund',
           :processed_date => date,
-          :amount         => GBP('4.98')
+          :amount         => total
       end
 
       it 'triggers a refund event' do
@@ -88,11 +89,11 @@ describe Refund do
       
       it 'creates an entry' do
         refund.should be_a(FeeAdjustment)
-        refund.price.should == GBP('-4.98')
+        refund.price.should == total * -1
         refund.processed_date.should == date
         refunds.count.should == 1
         refunds.first.should == refund
-        order.reload.status.should == 'refunded'
+        order.reload.status.should == 'fully_refunded'
       end
     end
   end

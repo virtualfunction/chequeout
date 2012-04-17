@@ -24,6 +24,10 @@ class CreateSchema < ActiveRecord::Migration
       database.create_table :promotions do |table|
         table.chequeout   :promotional_crtieria, :promotional_discounts, :promotional_details
       end
+
+      database.create_table :promotion_discount_items do |table|
+        table.chequeout   :promotional_discount_items
+      end
     end
   end
 end

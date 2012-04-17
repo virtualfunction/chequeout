@@ -96,11 +96,14 @@ module Chequeout::Refundable
     # of cash. Pass a block should this need to be processed by the merchant, 
     # or any other custom actions need to be done 
     def general_refund!(settings = Hash.new)
+      total   = calculated_total
       date    = settings[:processed_date]
       date    = Time.now if true == date
-      message = settings[:display_name] || I18n.translate('orders.refunded')
+      message = settings[:display_name] || I18n.translate('orders.refund.order', :order => uid)
       amount  = settings[:amount]       || total_price
-      state   = settings[:state]        || 'refunded'
+      amount  = order.currency.amount amount unless amount.is_a? Money
+      state   = (amount < total) ? 'part_refunded' : 'fully_refunded'
+      state   = settings[:state] || state
       return false if fully_refunded? or amount.cents.zero?
       transaction do
         run_callbacks :refund_payment do
