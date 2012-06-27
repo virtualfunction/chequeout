@@ -84,7 +84,7 @@ module Chequeout::Offer
     # Is this coupon valid for a given order?
     def applicable_for?(order, options = Hash.new)
       # See if this has been redeemed as a coupon for this promotion
-      return false if order_adjustments.by_order(order).count > 0 and not options[:skip_redeemed]
+      return false if (order_adjustments.by_order(order).count > 0 and not options[:skip_redeemed]) or frozen?
       # Check each of the criteria
       with_cart order, options do
         run_callbacks :order_applicable do
@@ -128,6 +128,7 @@ module Chequeout::Offer
     end
   end
   
+  # Ensure related coupons get removed when removing a purchase
   module Purchase
     when_included do
       after_destroy :check_coupons
@@ -138,6 +139,7 @@ module Chequeout::Offer
     end
   end
   
+  # Promotions can have multiple items, so this acts as a join relation
   module PromotionDiscountableItem
     when_included do
       belongs_to :promotion
@@ -165,7 +167,7 @@ module Chequeout::Offer
       scope         :by_promotion_id, lambda { |id| joins(:fee_adjustments).merge ::FeeAdjustment.by_item(Promotion.find(id)) }
     end
     
-    # Remove any coupons that do not apply
+    # Remove any coupons for basket if the promotion no longer applies (ignoreing if it's been redeemed prior)
     def remove_non_applicable_coupons
       coupons.each do |coupon|
         coupon.destroy if basket? and not coupon.related_adjustment_item.applicable_for? self, :skip_redeemed => true
@@ -350,11 +352,10 @@ module Chequeout::Offer
     end
     
     when_included do
-      attr_accessor :debugging
       has_many :promotion_discount_items, :dependent => :destroy, :inverse_of => :promotion
     end
   end
-  
+
   Criteria.new :discount_code do 
     filter do 
       offer_options[:skip_redeemed] or ((applies_with_coupon_code? or applies_with_offer_token?) and not applied_alredy?)

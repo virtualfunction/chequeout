@@ -109,6 +109,7 @@ module Chequeout::PurchaseItem
   
   # Copy details from original product
   def copy_details
+    return if frozen? # Items marked for removal should be skipped
     self.force_copy_details = false
     self.price        = brought_item.try :price
     self.display_name = brought_item.try :display_name
