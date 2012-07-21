@@ -55,6 +55,7 @@ module Chequeout::Inventory
     
     # Change the levels of investory by a specific amount
     def set_inventory(level)
+      return if level.blank?
       old_level = stock_levels.to_i
       change_levels = proc { self[:stock_levels] = level }
       if level <= 0 and tracking_inventory?
