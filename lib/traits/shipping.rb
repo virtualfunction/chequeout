@@ -153,13 +153,40 @@ module Chequeout::Shipping
         table.integer   :weight
       end
     end
-    
+
     # If an item has a weight
     def has_shipping_weight?
       weight and use_weight_for_shipping?
     end
   end
   
+  # == For products that have fixed shipping costs
+  module CalculateByFixedCost
+    module Item
+      when_included do
+        Database.register :item_shipping_cost do |table|
+          table.integer   :shipping_price_amount
+          table.string    :shipping_price_currency
+        end
+
+        Money.composition_on self, :shipping_price
+      end
+    end
+
+    # Get the shipping costs by weight and call any other methods in the dispatch chain
+    def calculate_shipping_cost
+      super + shipping_cost_based_on_fixed_cost
+    end
+
+    def shipping_cost_based_on_fixed_cost
+      purchase_items.inject zero do |sum, purchase|
+        item = purchase.brought_item
+        sum += item.shipping_price * purchase.quantity if item.respond_to? :shipping_price and item.shipping_price
+        sum
+      end
+    end
+  end
+
   # == Work out shipping price based on aggregate order weight
   # If a purchased item is marked to alter shipping based on weight it will 
   # modify the order based on this.

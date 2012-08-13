@@ -17,7 +17,7 @@ module Chequeout::Core::CurrencyExtensions
           raise ArgumentError, 'Can not convert %s to money' % value.class unless value.nil?
         end
       end
-      # Set up composition fields
+      # Set up composition fields. TODO: Deal with deprecation warning
       model.composed_of prefix, 
         :class_name   => 'Money', 
         :allow_nil    => true,
