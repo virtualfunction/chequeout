@@ -10,7 +10,7 @@ FactoryGirl.define do
     currency        { GBP(0.00).currency }
 
     factory :filled_basket_order do
-      after_create do |order|
+      after :create do |order|
         product = FactoryGirl.create(:product)
         order.add product, :quantity => 2
       end

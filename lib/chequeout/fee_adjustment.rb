@@ -46,16 +46,16 @@ module Chequeout::FeeAdjustment
     Money.composition_on self, :price
     before_validation :infer_order
 
-    scope :by_item_type, lambda { |klass|
+    scope :by_item_type, -> klass {
       name = (klass.respond_to? :base_class) ? klass.base_class : klass.to_s
       where :related_adjustment_item_type => name
     }
-    scope :by_item, lambda { |item|
+    scope :by_item, -> item {
       by_item_type(item.class).where :related_adjustment_item_id => item.id
     }
     
-    scope :by_purpose,    lambda { |purpose| where :purpose => purpose }
-    scope :by_order,      lambda { |order| where :order_id => order.id }
+    scope :by_purpose,    -> purpose { where :purpose => purpose }
+    scope :by_order,      -> order   { where :order_id => order.id }
 
     # Create purpose specific scopes
     purposes.each do |item|

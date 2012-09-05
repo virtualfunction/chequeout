@@ -36,7 +36,7 @@ describe Shipping do
     
     it 'can be marked as dispatchable' do
       order.dispatched?.should be_false
-      lambda { order.dispatched! }.should(change(Order.dispatched, :count).by(1))
+      expect { order.dispatched! }.to  change(Order.dispatched, :count).by(1)
       order.dispatched?.should be_true
       order.dispatch_date.should be_a(Time)
       order.event_history[:dispatched].should == 1

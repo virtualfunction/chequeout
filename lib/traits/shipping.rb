@@ -78,7 +78,7 @@ module Chequeout::Shipping
   # Field: tracking_code, dispatch_date
   module DispatchableOrder
     when_included do
-      scope :dispatched, lambda { |*state| where 'dispatch_date IS %s NULL' % ('NOT' if state.push(true).shift) }
+      scope :dispatched, -> state = true { where 'dispatch_date IS %s NULL' % ('NOT' if state) }
       attr_accessor :dispatch_pending
       register_callback_events :dispatched
       before_save :trigger_dispatch_if_required
@@ -126,7 +126,7 @@ module Chequeout::Shipping
   # Field: tracking_code
   module TrackableOrder
     when_included do
-      scope :by_tracking_code, lambda { |code| where :tracking_code => tracking_code }
+      scope :by_tracking_code, -> code { where :tracking_code => tracking_code }
       include Chequeout::Shipping::Order
       include Chequeout::Shipping::DispatchableOrder
       Database.register :order_tracking do |table|

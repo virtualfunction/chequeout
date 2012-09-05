@@ -35,7 +35,7 @@ module Chequeout::Offer
       attr_accessor :order
       attr_reader   :offer_options
       
-      scope :by_discount_code, lambda { |text| 
+      scope :by_discount_code, -> text {
         where :discount_code => text.to_s.strip
       }
     end
@@ -163,8 +163,8 @@ module Chequeout::Offer
     when_included do
       attr_accessor :pending_coupon_code
       after_save    :remove_non_applicable_coupons, :apply_pending_coupon
-      scope         :by_promotion, lambda { |item| joins(:fee_adjustments).merge  ::FeeAdjustment.by_item(item) }
-      scope         :by_promotion_id, lambda { |id| joins(:fee_adjustments).merge ::FeeAdjustment.by_item(Promotion.find(id)) }
+      scope         :by_promotion,    -> item { joins(:fee_adjustments).merge  ::FeeAdjustment.by_item(item) }
+      scope         :by_promotion_id, -> id   { joins(:fee_adjustments).merge ::FeeAdjustment.by_item(Promotion.find(id)) }
     end
     
     # Remove any coupons for basket if the promotion no longer applies (ignoreing if it's been redeemed prior)
@@ -215,11 +215,11 @@ module Chequeout::Offer
   # == Add to FeeAdjustment if using discount code
   module DiscountCodeAdjustment
     when_included do
-      scope :by_discount_code, lambda { |code| where :discount_code => code }
-      scope :by_discounted_item_type, lambda { |klass|
+      scope :by_discount_code, -> code { where :discount_code => code }
+      scope :by_discounted_item_type, -> klass {
         where :discounted_item_type => klass.try(:base_class) || klass.to_s
       }
-      scope :by_discounted_item, lambda { |item|
+      scope :by_discounted_item, -> item {
         by_discounted_item_type(item.class).where :discounted_item_id => item.id
       }
       Database.register :fee_adjustments do |table|
@@ -387,7 +387,7 @@ module Chequeout::Offer
     end
     
     when_included do
-      scope :by_discount_code, lambda { |code| where :discount_code => code }
+      scope :by_discount_code, -> code { where :discount_code => code }
     end
   end
 end

@@ -70,15 +70,15 @@ module Chequeout::PurchaseItem
     belongs_to  :brought_item, :polymorphic => true
 
     # By item
-    scope :by_item_type, lambda { |klass|
+    scope :by_item_type, -> klass {
       name = (klass.respond_to? :base_class) ? klass.base_class : klass.to_s
       where :brought_item_type => name
     }
-    scope :by_item, lambda { |item|
+    scope :by_item, -> item {
       by_item_type(item.class).where :brought_item_id => item.id
     }
     # By order
-    scope :by_order, lambda { |item|
+    scope :by_order, -> item {
       where :order_id => item.id
     }
     

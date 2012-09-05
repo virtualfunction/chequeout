@@ -76,8 +76,8 @@ module Chequeout::Address
     end
 
     default_scope order(:position)
-    scope :by_role,     lambda { |role| where :role => role }
-    scope :by_purpose,  lambda { |purpose| where :purpose => purpose }
+    scope :by_role,     -> role     { where :role => role }
+    scope :by_purpose,  -> purpose  { where :purpose => purpose }
 
     belongs_to :addressable, :polymorphic => true
 
@@ -162,7 +162,7 @@ module Chequeout::Address
   
   # Copy fields from another address
   def copy_from(other)
-    self.attributes = other.details
+    assign_attributes other.details
   end
   
   # Is this the same location?

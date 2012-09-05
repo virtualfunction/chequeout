@@ -47,15 +47,15 @@ module Chequeout::Order
       __.has_many :fee_adjustments
     end
     
-    time_convert = proc do |time|
+    time_convert = -> time do
       time.is_a?(Time) ? time : (Time.parse time rescue Time.now)
     end
 
-    scope :purchased_after,     lambda { |time| where '%s.created_at > ?' % table_name, time_convert.call(time) }
-    scope :purchased_before,    lambda { |time| where '%s.created_at < ?' % table_name, time_convert.call(time) }
-    scope :by_status,           lambda { |status| where :status => status }
+    scope :purchased_after,     -> time { where '%s.created_at > ?' % table_name, time_convert.call(time) }
+    scope :purchased_before,    -> time { where '%s.created_at < ?' % table_name, time_convert.call(time) }
+    scope :by_status,           -> status { where :status => status }
     scope :in_order_of_payment, order('%s.payment_date DESC' % table_name)
-    scope :has_item, lambda { |item|
+    scope :has_item, -> item {
       select('DISTINCT %s.*' % table_name).
       joins(:purchase_items).
       merge ::PurchaseItem.by_item(item)

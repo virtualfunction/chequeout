@@ -28,7 +28,7 @@ module EventSpy
         define_method name do
           event_history[event] += 1
         end
-        set_callback event, :before, name.to_sym, :if => lambda { |record| oid == record.object_id }
+        set_callback event, :before, name.to_sym, if: -> record { oid == record.object_id }
       end
     end
     event_history.clear
