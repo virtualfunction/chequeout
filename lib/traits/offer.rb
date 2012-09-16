@@ -155,6 +155,13 @@ module Chequeout::Offer
       validates :promotion_id, :uniqueness => { :scope => [ :discounted_id, :discounted_type ] }
       validates :discounted_id, :uniqueness => { :scope => [ :promotion_id, :discounted_type ] }
       validates :discounted_type, :uniqueness => { :scope => [ :discounted_id, :promotion_id ] }
+
+      scope :by_discounted_type, -> klass {
+        where :discounted_type => klass.try(:base_class) || klass.to_s
+      }
+      scope :by_discounted, -> item {
+        by_discounted_type(item.class).where :discounted_id => item.id
+      }
     end
   end
 
