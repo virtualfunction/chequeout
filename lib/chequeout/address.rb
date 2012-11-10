@@ -83,10 +83,10 @@ module Chequeout::Address
 
     # Extra scopes
     purposes.each do |purpose|
-      scope purpose, by_purpose(purpose)
+      scope purpose, -> { by_purpose purpose }
     end
     roles.each do |role|
-      scope role, by_role(role)
+      scope role, -> { by_role role }
     end
     
     # This enables us to prioritize addresses

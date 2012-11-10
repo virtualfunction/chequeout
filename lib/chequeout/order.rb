@@ -54,7 +54,7 @@ module Chequeout::Order
     scope :purchased_after,     -> time { where '%s.created_at > ?' % table_name, time_convert.call(time) }
     scope :purchased_before,    -> time { where '%s.created_at < ?' % table_name, time_convert.call(time) }
     scope :by_status,           -> status { where :status => status }
-    scope :in_order_of_payment, order('%s.payment_date DESC' % table_name)
+    scope :in_order_of_payment, -> { order '%s.payment_date DESC' % table_name }
     scope :has_item, -> item {
       select('DISTINCT %s.*' % table_name).
       joins(:purchase_items).
@@ -63,7 +63,7 @@ module Chequeout::Order
 
     # Might need to rethink these, and see how ActiveMerchant does things
     status_list.each do |state|
-      scope state, by_status(state)
+      scope state, -> { by_status state }
       register_callback_events state
       
       define_method '%s?' % state do

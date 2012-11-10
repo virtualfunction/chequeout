@@ -59,7 +59,7 @@ module Chequeout::FeeAdjustment
 
     # Create purpose specific scopes
     purposes.each do |item|
-      scope item, by_purpose(item)
+      scope item, -> { by_purpose item }
 
       define_method '%s?' % item do
         purpose == item

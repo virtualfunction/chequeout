@@ -23,7 +23,7 @@ module Chequeout::PurchaseItem
           :dependent  => :destroy, 
           :class_name => 'PurchaseItem', 
           :as         => :brought_item
-        scope :has_purchases, joins(:purchases)
+        scope :has_purchases, -> { joins :purchases }
         # Protect brought items - TODO, do we need this, we copy the 
         # display_name + price into the purchase
         before_destroy :destructable?
@@ -31,7 +31,7 @@ module Chequeout::PurchaseItem
       end
       # Create back association
       items_name = klass.name.underscore.pluralize.to_sym
-      scope items_name, by_item_type(klass)
+      scope items_name, -> { by_item_type klass }
       ::Order.class_eval do
         has_many items_name, 
           :through      => :purchases, 

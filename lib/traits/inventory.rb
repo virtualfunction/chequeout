@@ -12,8 +12,8 @@ module Chequeout::Inventory
         table.index   :stock_levels
       end
       register_callback_events :stock_replenished, :out_of_stock
-      scope :out_of_stock, where('stock_levels <= 0')
-      scope :in_stock, where('stock_levels > 0')
+      scope :out_of_stock,  -> { where 'stock_levels <= 0' }
+      scope :in_stock,      -> { where 'stock_levels > 0' }
     end
     
     # See if a product has the number of items avaliable to purchase
