@@ -2,28 +2,32 @@ module Chequeout::Core::CurrencyExtensions
   module ClassMethods
     # Use in AR classes, i.e. `Money.composition_on self, :price`
     def composition_on(model, prefix)
-      fields = [ 
-        [ '%s_amount'   % prefix, :cents ], 
-        [ '%s_currency' % prefix, :currency_as_string ] ]
-      # Construct based on AR fields
-      construct = Proc.new do |cents, currency| 
-        Money.new cents || 0, currency || Money.default_currency.id
-      end
-      # Call to_money on assignments, etc
-      convert = Proc.new do |value| 
-        if value.respond_to? :to_money
-          value.to_money
-        else
-          raise ArgumentError, 'Can not convert %s to money' % value.class unless value.nil?
+      model.class_eval <<-END
+        [ :#{prefix}_amount_changed?, :#{prefix}_currency_changed? ].each do |changed|
+          before_validation :clear_#{prefix}_money, :if => changed
         end
-      end
-      # Set up composition fields. TODO: Deal with deprecation warning
-      model.composed_of prefix, 
-        :class_name   => 'Money', 
-        :allow_nil    => true,
-        :mapping      => fields,
-        :constructor  => construct,
-        :converter    => convert
+
+        def clear_#{prefix}_money
+          @#{prefix} = nil
+        end
+
+        def #{prefix}
+          @#{prefix} ||= Money.new #{prefix}_amount || 0, #{prefix}_currency || Money.default_currency.id unless #{prefix}_currency.blank?
+        end
+
+        def #{prefix}=(value)
+          clear_#{prefix}_money
+          unless value.nil?
+            raise ArgumentError, 'Can not convert %s to money' % value.class unless value.respond_to? :to_money
+            money = value.to_money
+            currency, cents = money.currency_as_string, money.cents
+          else
+            currency, cents = nil, nil
+          end
+          self[:#{prefix}_amount]   = cents
+          self[:#{prefix}_currency] = currency
+        end
+      END
     end
     
     # Setup a helper method, so one can do stuff like `GBP 4.99`
@@ -43,7 +47,7 @@ module Chequeout::Core::CurrencyExtensions
     end
     
     def currencies_list
-      @currencies_list ||= CurrencyLoader.load_currencies rescue Money::Currency::TABLE
+      @currencies_list ||= CurrencyLoader.load_currencies rescue Money::Currency.load_currencies
     end
   end
   
