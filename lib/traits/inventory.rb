@@ -18,7 +18,7 @@ module Chequeout::Inventory
     
     # See if a product has the number of items avaliable to purchase
     def has_inventory?(amount)
-      not(tracking_inventory?) or stock_levels > amount
+      not(tracking_inventory?) or stock_levels > amount or stock_levels.nil?
     end
     
     # Are we able to track inventory levels for this product
@@ -29,15 +29,20 @@ module Chequeout::Inventory
     # Is this item in stock
     def in_stock?
       has_inventory? 1
-    end    
+    end
     
+    # Is this item out of stock
+    def out_of_stock?
+      not in_stock?
+    end
+
     # Reduce inventory levels
-    def decrease_inventory!(amount)
+    def decrease_inventory!(amount = 1)
       change_inventory_by -amount
     end
     
     # Increase inventory levels
-    def increase_inventory!(amount)
+    def increase_inventory!(amount = 1)
       change_inventory_by amount
     end
 
@@ -55,15 +60,15 @@ module Chequeout::Inventory
     
     # Change the levels of investory by a specific amount
     def set_inventory(level)
-      return if level.blank?
+      new_level = level.to_i unless level.blank?
       old_level = stock_levels.to_i
-      change_levels = -> { self[:stock_levels] = level }
-      if level <= 0 and tracking_inventory?
-        # Out of stock
-        run_callbacks :out_of_stock, &change_levels
-      elsif old_level <= 0 and level > 0 and tracking_inventory?
+      change_levels = -> { self[:stock_levels] = new_level }
+      if tracking_inventory? and old_level <= 0 and (new_level.nil? or new_level > 0)
         # Got more stock :)
         run_callbacks :stock_replenished, &change_levels
+      elsif tracking_inventory? and new_level <= 0
+        # Out of stock
+        run_callbacks :out_of_stock, &change_levels
       else
         # Otherwise just change
         change_levels.call
