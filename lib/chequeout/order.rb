@@ -37,16 +37,16 @@ module Chequeout::Order
     end
 
     register_callback_events :completed_payment, :failed_payment, :refund_payment, :process_payment, :merchant_processing
-    
+
     # Address and money setup, must be done prior to tax/shipping extensions
     ::Address.related_to self
     Money.composition_on self, :total
-    
+
     with_options :dependent => :destroy, :inverse_of => :order do |__|
       __.has_many :purchase_items
       __.has_many :fee_adjustments
     end
-    
+
     time_convert = -> time do
       time.is_a?(Time) ? time : (Time.parse time rescue Time.now)
     end
@@ -65,11 +65,11 @@ module Chequeout::Order
     status_list.each do |state|
       scope state, -> { by_status state }
       register_callback_events state
-      
+
       define_method '%s?' % state do
         status == state
       end
-      
+
       define_method '%s!' % state do
         transaction do
           run_callbacks state do
@@ -86,7 +86,7 @@ module Chequeout::Order
     validate  :ensure_not_empty!, :unless => :basket?
 
     attr_writer :currency
-    
+
     attr_protected :status, :total, :payment_date, :user_id, :session_uid
   end
 
@@ -94,22 +94,22 @@ module Chequeout::Order
   def zero
     currency.amount '0.00'
   end
-  
+
   # Mark this as paid
   def paid!(time = Time.now)
     update_attribute :payment_date, time
   end
-  
+
   # Has a refund of any sort been refunded?
   def refund?
     refunded? or part_refunded? or fully_refunded? 
   end
-  
+
   # This can be overriden such that currency can be based on address
   def currency
     @currency || detected_currency
   end
-  
+
   # Fallback currency unit
   #
   # Not this must not invoke any total calulations (or you get 
@@ -121,29 +121,29 @@ module Chequeout::Order
       (total_currency ? total : purchase_items.first.price).currency
     end
   end
-  
+
   # Update quantities
   def update_quantities(details)
     details.each do |purchase_id, quantity|
       purchase_items.update purchase_id, :quantity => quantity
     end
   end
-  
+
   # This assumes this item is saved, and has an id
   def item_quantities=(table)
     update_quantities table
   end
-  
+
   # Reader, just there in case view wants it
   def item_quantities
     Hash[ purchase_items.collect { |item| [ item.id, item.quantity ] } ]
   end
-  
+
   # Note: If completed we really shouldn't modify order data
   def completed?
     success? or refunded?
   end
-  
+
   # Added the basket? returns the item if so
   def contains(item)
     purchase_items.detect do |object|
@@ -165,7 +165,7 @@ module Chequeout::Order
       success!
     end
   end
-  
+
   # Wrap failure with any custom callbacks
   def payment_failed!
     run_callbacks :failed_payment do
@@ -191,7 +191,7 @@ module Chequeout::Order
       payment_failed!
     end
   end
-  
+
   # If merchant processing is needed, run callbacks and dipatch to merchant
   def handle_merchant_processing!
     skip_merchant_processing? || begin
@@ -200,12 +200,12 @@ module Chequeout::Order
       end
     end
   end
-  
+
   # Are the addreses the same, if set
   def shipping_same_as_billing
     billing_address.same_location? shipping_address if shipping_address and billing_address
   end
-  
+
   # Assign shipping to be the billing address
   def shipping_same_as_billing=(value)
     return :skipped unless !! value and billing_address
@@ -213,7 +213,7 @@ module Chequeout::Order
     self.build_shipping_address unless shipping_address
     self.shipping_address.attributes = fields
   end
-  
+
   # Overriden to force the procrastination of address assignment
   def attributes=(details, *args)
     is_same = details.to_options.delete :shipping_same_as_billing
@@ -221,27 +221,32 @@ module Chequeout::Order
       self.shipping_same_as_billing = is_same
     end
   end
-  
+
   # Criteria to skip payment gateway, normally if order is zero.
   def skip_merchant_processing?
     total == zero
   end
-  
+
   # Unique id for the order
   def uid
     self[:uid] ||= Digest::SHA1.hexdigest(id.to_s)[0...8]
   end
-  
+
   # Sum up purchases and adjustments
   def calculated_total
-    sub_total + sum_prices(fee_adjustments.collect(&:price))
+    sub_total + adjustment_total
   end
-  
+
   # Total of all items, excluding adjustments
   def sub_total
     sum_prices purchase_items.collect(&:total_price)
   end
-  
+
+  # Total of order adjustemnts such as shipping etc
+  def adjustment_total
+    sum_prices fee_adjustments.collect(&:price)
+  end
+
   # Add new purchase
   def add(object, settings = Hash.new)
     details = { 
@@ -255,19 +260,19 @@ module Chequeout::Order
     purchase = scope.first || scope.build
     purchase.update_attributes! details
   end
-  
+
   # Remove a purchase
   def remove(object)
     purchase_items.by_item(object).destroy_all
   end
-  
+
   # Cached sum of the items, only calculating if no total set
   def total_price
     (not total or total.zero?) ? calculated_total : total
   end
-    
+
   protected
-  
+
   # Zero priced items might be in different currency, but inject 'zero' to avoid numeric zero
   def sum_prices(items)
     items.reject(&:zero?).push(zero).sum
@@ -277,7 +282,7 @@ module Chequeout::Order
   def merchant_processing!
     raise 'Merchant processing needs to be implenmenting'
   end
-  
+
   # Do not let a order go through unless it's got items
   def ensure_not_empty!
     errors.add :base, basket_must_contain_items if purchase_items.empty?
