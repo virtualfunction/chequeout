@@ -88,7 +88,7 @@ module Chequeout::PurchaseItem
     before_validation :unit_price
     # Validate price?
     
-    attr_protected :price
+    # attr_protected :price
     attr_accessor :force_copy_details
     
     # Don't duplicate an item

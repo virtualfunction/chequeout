@@ -87,7 +87,7 @@ module Chequeout::Order
 
     attr_writer :currency
 
-    attr_protected :status, :total, :payment_date, :user_id, :session_uid
+    # attr_protected :status, :total, :payment_date, :user_id, :session_uid
   end
 
   # No money in the default order currency, used for summing caluations

@@ -13,6 +13,11 @@ module Chequeout::Offer
           promotion.apply_to order
         end
       end
+
+      # Override this for other ways look up promo codes
+      def using_code(text)
+        by_discount_code(text).to_a
+      end
     end
     
     when_included do
@@ -66,7 +71,7 @@ module Chequeout::Offer
       @coupon ||= begin
         details = {
           :related_adjustment_item  => self,
-          :discount_code            => discount_code,
+          :discount_code            => order.pending_coupon_code,
           :display_name             => summary,
           :purpose                  => 'coupon',
           :price                    => calculated_discount * -1, # Money doesn't have negate unary method
@@ -105,26 +110,6 @@ module Chequeout::Offer
     ensure
       @offer_options = old_options
       self.order = old
-    end
-  end
-  
-  # Registry to hold list of criteria items
-  module Criteron
-    class << self
-      # Registry for criteria
-      def items
-        @items ||= Hash.new do |hash, key|
-          hash[key] = Module.new
-        end
-      end
-    end
-
-    # Add all criteria to work on fee adjustments
-    when_included do
-      register_callback_events :order_applicable
-      Chequeout::Offer::Criteron.items.values.each do |item|
-        include item
-      end
     end
   end
   
@@ -170,14 +155,15 @@ module Chequeout::Offer
     when_included do
       attr_accessor :pending_coupon_code
       after_save    :remove_non_applicable_coupons, :apply_pending_coupon
-      scope         :by_promotion,    -> item { joins(:fee_adjustments).merge  ::FeeAdjustment.by_item(item) }
+      scope         :by_promotion,    -> item { joins(:fee_adjustments).merge ::FeeAdjustment.by_item(item) }
       scope         :by_promotion_id, -> id   { joins(:fee_adjustments).merge ::FeeAdjustment.by_item(Promotion.find(id)) }
     end
     
-    # Remove any coupons for basket if the promotion no longer applies (ignoreing if it's been redeemed prior)
+    # Remove any coupons for basket if the promotion no longer applies (ignoring if it's been redeemed prior)
     def remove_non_applicable_coupons
       coupons.each do |coupon|
-        coupon.destroy if basket? and not coupon.related_adjustment_item.applicable_for? self, :skip_redeemed => true
+        applicable = coupon.related_adjustment_item.applicable_for? self, :skip_redeemed => true
+        coupon.destroy if basket? and not applicable
       end
     end
     
@@ -208,8 +194,9 @@ module Chequeout::Offer
         remove_coupon
         :coupon_removed
       elsif pending_coupon_code.present? and not coupon_code == pending_coupon_code
-        promotion = Promotion.by_discount_code(pending_coupon_code).first 
-        promotion.apply_to self if promotion
+        Promotion.using_code(pending_coupon_code).any? do |promotion|
+          promotion.apply_to self
+        end
         :coupon_applied
       else
         :coupon_skipped
@@ -265,7 +252,35 @@ module Chequeout::Offer
   DiscountStrategy.new :fixed do
     discount
   end
-  
+
+  # == Registry to hold list of criteria items
+  module Criteron
+    class << self
+      # Registry for criteria
+      def items
+        @items ||= Hash.new do |hash, key|
+          hash[key] = Module.new
+        end
+      end
+
+      def targets
+        @targets ||= Set.new
+      end
+
+      def apply_offer_criteria_to(target)
+        items.each do |name, item|
+          target.__send__ :include, item
+        end
+        targets << target
+      end
+    end
+
+    when_included do
+      register_callback_events :order_applicable
+      Chequeout::Offer::Criteron.apply_offer_criteria_to self
+    end
+  end
+
   # == Add new coupon criteria as methods in here
   class Criteria
     attr_reader :name, :container
@@ -297,7 +312,11 @@ module Chequeout::Offer
     # for debugging
     def filter(&code)
       criteria = '%s_criteria' % name
-      define_method criteria, &code
+      # define_method criteria, &code
+      define_method criteria do
+        puts criteria
+        instance_eval &code
+      end
       when_included { before_order_applicable criteria }
     end
     
@@ -327,7 +346,7 @@ module Chequeout::Offer
   
   Criteria.new :prevent_negative_balance do
     filter do
-      (not discount) or (order.total_price - discount > order.zero)
+      offer_options[:skip_redeemed] or (not discount) or (order.total_price - discount >= order.zero)
     end
   end
 
