@@ -162,7 +162,8 @@ module Chequeout::Offer
     # Remove any coupons for basket if the promotion no longer applies (ignoring if it's been redeemed prior)
     def remove_non_applicable_coupons
       coupons.each do |coupon|
-        applicable = coupon.related_adjustment_item.applicable_for? self, :skip_redeemed => true
+        promotion = coupon.related_adjustment_item
+        applicable = promotion.applicable_for? self, :skip_redeemed => true if promotion
         coupon.destroy if basket? and not applicable
       end
     end
