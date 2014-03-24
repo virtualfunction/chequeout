@@ -1,4 +1,4 @@
-require File.expand_path('../../../spec/spec_helper', __FILE__)
+require 'spec_helper'
 
 Refund = Chequeout::Refundable
 
@@ -8,50 +8,51 @@ describe Refund do
 
   describe Order do
     it 'has refund management' do
-      Order.should be < Refund::Order
+      expect(Order).to be < Refund::Order
     end
   end
 
   describe PurchaseItem do
     it 'has refund management' do
-      PurchaseItem.should be < Refund::Purchase
+      expect(PurchaseItem).to be < Refund::Purchase
     end
   end
 
   describe 'purchase' do
     let(:purchase) { order.purchase_items.first }
-    
+
     describe 'everything' do
       let(:refund) { purchase.refund! }
 
       it 'created an entry' do
-        refund.should be_a(FeeAdjustment)
-        refund.quantity.should == purchase.quantity
-        refund.related_adjustment_item.should == purchase
-        refund.price.should == GBP('-19.98')
-        refund.processed_date.should be_nil
-        purchase.refund_items.first.should == refund
-        order.reload.status.should == 'part_refunded'
+        expect(refund).to be_a(FeeAdjustment)
+        expect(refund.quantity).to eq purchase.quantity
+        expect(refund.related_adjustment_item).to eq purchase
+        expect(refund.price).to eq(GBP '-19.98')
+        expect(refund.processed_date).to be nil
+        expect(purchase.refund_items.first).to eq refund
+        expect(order.reload).to be_part_refunded
       end
     end
-    
+
     describe 'partial' do
-      let :refund do 
+      let :refund do
         purchase.refund! \
-          :quantity     => 1, 
-          :display_name => 'Part refund',
-          :processed    => date
+          quantity:     1,
+          display_name: 'Part refund',
+          processed:    date
       end
-      
+
       it 'created an entry' do
-        refund.quantity.should == 1
-        refund.price.should == GBP('-9.99')
-        refund.display_name.should == 'Part refund'
-        refund.processed_date.should == date
+        expect(refund.quantity).to eq 1
+        expect(refund.price).to eq(GBP '-9.99')
+        expect(refund.display_name).to eq 'Part refund'
+        expect(refund.processed_date).to eq date
+        expect(order.reload).to be_part_refunded
       end
     end
   end
-  
+
   describe 'order' do
     describe 'full' do
       let(:refunds) { order.full_refund! }
@@ -59,41 +60,41 @@ describe Refund do
 
       it 'triggers a refund event' do
         refund
-        order.event_history[:refund_payment].should == 1
+        expect(order.event_history[:refund_payment]).to eq 1
       end
-      
-      it 'creates an entry' do 
-        refund.should be_a(FeeAdjustment)
-        refund.price.should == GBP('-19.98')
-        refund.processed_date.should be_nil
-        refunds.count.should == 1
-        refunds.first.should == refund
-        order.reload.status.should == 'fully_refunded'
+
+      it 'creates an entry' do
+        expect(refund).to be_a(FeeAdjustment)
+        expect(refund.price).to eq(GBP '-19.98')
+        expect(refund.processed_date).to be nil
+        expect(refunds.count).to eq 1
+        expect(refunds.first).to eq refund
+        expect(order.reload).to be_fully_refunded
       end
     end
-    
+
     describe 'general' do
       let(:total)   { order.calculated_total }
       let(:refunds) { order.fee_adjustments.refund }
       let :refund do
         order.general_refund! \
-          :display_name   => 'General refund',
-          :processed_date => date,
-          :amount         => total
+          display_name:   'General refund',
+          processed_date: date,
+          amount:         total
       end
 
       it 'triggers a refund event' do
         refund
-        order.event_history[:refund_payment].should == 1
+        expect(order.event_history[:refund_payment]).to eq 1
       end
-      
+
       it 'creates an entry' do
-        refund.should be_a(FeeAdjustment)
-        refund.price.should == total * -1
-        refund.processed_date.should == date
-        refunds.count.should == 1
-        refunds.first.should == refund
-        order.reload.status.should == 'fully_refunded'
+        expect(refund).to be_a(FeeAdjustment)
+        expect(refund.price).to eq(total * -1)
+        expect(refund.processed_date).to eq date
+        expect(refunds.count).to eq 1
+        expect(refunds.first).to eq refund
+        expect(order.reload).to be_fully_refunded
       end
     end
   end

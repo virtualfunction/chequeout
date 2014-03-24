@@ -3,14 +3,14 @@
 # == Order - Container for purchased items
 #
 # Note because orders aren't always tied to a user (often many cart systems will allow one to add items
-# to a cart without signing in, and even checkout in some cases anonymously, we use a session_uid field 
-# to track orders while in the 'basket' state. This later can be tied to a user account, or whatever is 
+# to a cart without signing in, and even checkout in some cases anonymously, we use a session_uid field
+# to track orders while in the 'basket' state. This later can be tied to a user account, or whatever is
 # fit for the purpose
 module Chequeout::Order
   module ClassMethods
     # List of allow order statuses. Can be appended with Order.status_list << 'order_state'
     def status_list
-      @status_list ||= %w[ 
+      @status_list ||= %w[
         refund_requested
         part_refunded
         fully_refunded
@@ -42,7 +42,7 @@ module Chequeout::Order
     ::Address.related_to self
     Money.composition_on self, :total
 
-    with_options :dependent => :destroy, :inverse_of => :order do |__|
+    with_options dependent: :destroy, inverse_of: :order do |__|
       __.has_many :purchase_items
       __.has_many :fee_adjustments
     end
@@ -53,7 +53,7 @@ module Chequeout::Order
 
     scope :purchased_after,     -> time { where '%s.created_at > ?' % table_name, time_convert.call(time) }
     scope :purchased_before,    -> time { where '%s.created_at < ?' % table_name, time_convert.call(time) }
-    scope :by_status,           -> status { where :status => status }
+    scope :by_status,           -> status { where status: status }
     scope :in_order_of_payment, -> { order '%s.payment_date DESC' % table_name }
     scope :has_item, -> item {
       select('DISTINCT %s.*' % table_name).
@@ -80,10 +80,10 @@ module Chequeout::Order
       end
     end
 
-    validates :session_uid, :status, :presence => true
-    validates :billing_address, :presence => true, :associated => true, :unless => :basket?
-    validates :status, :inclusion => { :in => status_list }, :allow_nil => true
-    validate  :ensure_not_empty!, :unless => :basket?
+    validates :session_uid, :status, presence: true
+    validates :billing_address, presence: true, associated: true, unless: :basket?
+    validates :status, inclusion: { in: status_list }, allow_nil: true
+    validate  :ensure_not_empty!, unless: :basket?
 
     attr_writer :currency
 
@@ -102,7 +102,7 @@ module Chequeout::Order
 
   # Has a refund of any sort been refunded?
   def refund?
-    refunded? or part_refunded? or fully_refunded? 
+    refunded? or part_refunded? or fully_refunded?
   end
 
   # This can be overriden such that currency can be based on address
@@ -112,7 +112,7 @@ module Chequeout::Order
 
   # Fallback currency unit
   #
-  # Not this must not invoke any total calulations (or you get 
+  # Not this must not invoke any total calulations (or you get
   # stack/recursion overflows)
   def detected_currency
     if purchase_items.empty?
@@ -125,7 +125,7 @@ module Chequeout::Order
   # Update quantities
   def update_quantities(details)
     details.each do |purchase_id, quantity|
-      purchase_items.update purchase_id, :quantity => quantity
+      purchase_items.update purchase_id, quantity: quantity
     end
   end
 
@@ -249,16 +249,15 @@ module Chequeout::Order
 
   # Add new purchase
   def add(object, settings = Hash.new)
-    details = { 
-      :order        => self,
-      :brought_item => object, 
-      :price        => (object.try(:price) || 0),
+    details = {
+      order:        self,
+      brought_item: object,
+      price:        (object.try(:price) || 0),
     }.merge settings.to_options
     # Only set quantity if we support it.
-    details[:quantity] ||= 1 if purchase_items.klass.instance_methods.include? :quantity=
     scope    = purchase_items.by_item object
     purchase = scope.first || scope.build
-    purchase.update_attributes! details
+    purchase.update! details
   end
 
   # Remove a purchase

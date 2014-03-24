@@ -1,14 +1,14 @@
 # == Scoped Attributes
 #
-# This is like attr_accessor, but instead of a setter assignment method, you reuse 
-# the 'getter' by passing a value and block to it. This value will be set for the 
+# This is like attr_accessor, but instead of a setter assignment method, you reuse
+# the 'getter' by passing a value and block to it. This value will be set for the
 # scope of the block.
 #
-# This is quite handy for systems where you are dealing with mini "DSL's" or 
+# This is quite handy for systems where you are dealing with mini "DSL's" or
 # ActiveSupport::Callbacks which doesn't allow you to pass parameters
 module Chequeout::Core::AttrScoped
   extend ActiveSupport::Concern
-  
+
   module ClassMethods
     # Define methods to wrap round scoped_item
     def attr_scoped(*args)
@@ -21,7 +21,7 @@ module Chequeout::Core::AttrScoped
       end
     end
   end
-  
+
   # Decide if we are reading or writing
   def scoped_item(name, item = nil, &code)
     if item and code
@@ -43,7 +43,7 @@ module Chequeout::Core::AttrScoped
       scoped_items[name] = old
     end
   end
-  
+
   # Table of currently scoped items
   def scoped_items
     @scoped_items ||= Hash.new

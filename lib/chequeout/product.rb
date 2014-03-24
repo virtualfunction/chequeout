@@ -8,9 +8,9 @@ module Chequeout::Product
       table.index   :price_amount
       table.timestamps
     end
-    
-    validates :price, :display_name, :presence => true
-    
+
+    validates :price, :display_name, presence: true
+
     # Money.composition_on self, :price
     ::PurchaseItem.related_to self
   end

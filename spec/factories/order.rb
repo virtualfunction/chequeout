@@ -11,10 +11,10 @@ FactoryGirl.define do
 
     factory :filled_basket_order do
       after :create do |order|
-        product = FactoryGirl.create(:product)
-        order.add product, :quantity => 2
+        product = FactoryGirl.create :product
+        order.add product, quantity: 2
       end
-      
+
       factory :shipped_order do
         tracking_code     nil
         dispatch_date     { Time.now }

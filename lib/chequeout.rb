@@ -1,12 +1,16 @@
 require 'active_support'
 require 'active_support/all'
 require 'active_record'
+require 'monetize/core_extensions'
+require 'monetize'
 require 'money'
 require 'set'
 
+I18n.enforce_available_locales = false
+
 module Chequeout
   module Core; end
-  
+
   require 'core/attr_scoped'
   require 'core/concerned'
   require 'core/currency_extensions'
@@ -20,7 +24,7 @@ module Chequeout
   TRAITS = %w[ Inventory Offer Shipping Taxation Refundable ].each do |trait|
     autoload trait.to_sym, 'traits/%s' % trait.underscore
   end
-  
+
   def self.load_all
     (MODELS + TRAITS).each { |item| const_get item }
   end

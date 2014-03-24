@@ -1,6 +1,6 @@
 class CreateSchema < ActiveRecord::Migration
   def change
-    with_options :force => true do |database|
+    with_options force: true do |database|
       database.create_table :addresses do |table|
         table.chequeout   :addressable
       end
@@ -12,11 +12,11 @@ class CreateSchema < ActiveRecord::Migration
       database.create_table :orders do |table|
         table.chequeout   :orderable, :order_tracking
       end
-      
+
       database.create_table :products do |table|
         table.chequeout   :item_details, :item_tax_rates, :item_shipping_by_weight, :item_stockable
       end
-      
+
       database.create_table :purchase_items do |table|
         table.chequeout   :purchase_order_lines, :purchase_inventory
       end

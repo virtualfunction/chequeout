@@ -1,30 +1,30 @@
-require File.expand_path('../../../spec/spec_helper', __FILE__)
+require 'spec_helper'
 
 Tax = Chequeout::Taxation
 
-describe Tax do 
+describe Tax do
   # TODO: Test event hooks?
 
-  specify { Order.should be < Tax::Order }
-  specify { PurchaseItem.should be < Tax::Purchase }
-  specify { Product.should be < Tax::Item }
-  
+  specify { expect(Order).to be < Tax::Order }
+  specify { expect(PurchaseItem).to be < Tax::Purchase }
+  specify { expect(Product).to be < Tax::Item }
+
   describe 'calcuations' do
     let(:order) { FactoryGirl.create :filled_basket_order }
-    
+
     it 'perform basic calculations' do
-      order.calculate_tax_cost.should == GBP('4.00')
+      expect(order.calculate_tax_cost).to eq(GBP '4.00')
     end
-    
+
     it 'integrates with purchased items' do
       purchase = order.purchase_items.first
-      purchase.tax_rate.to_s.should == '0.2'
-      purchase.tax_cost.should == GBP('4.00')
+      expect(purchase.tax_rate.to_s).to eq '0.2'
+      expect(purchase.tax_cost).to eq(GBP '4.00')
     end
-    
+
     it 'adds taxtion as fee adjustment' do
       order.calculate_tax
-      order.tax_scope.count.should > 0
+      expect(order.tax_scope.count).to be > 0
     end
   end
 end

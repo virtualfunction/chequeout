@@ -4,7 +4,7 @@ module Chequeout::Core::CurrencyExtensions
     def composition_on(model, prefix)
       model.class_eval <<-END
         [ :#{prefix}_amount_changed?, :#{prefix}_currency_changed? ].each do |changed|
-          before_validation :clear_#{prefix}_money, :if => changed
+          before_validation :clear_#{prefix}_money, if: changed
         end
 
         def clear_#{prefix}_money
@@ -29,35 +29,35 @@ module Chequeout::Core::CurrencyExtensions
         end
       END
     end
-    
+
     # Setup a helper method, so one can do stuff like `GBP 4.99`
     def setup(currency)
       iso4217 = currency.to_s.upcase
       ::Kernel.__send__ :define_method, iso4217 do |amount|
         value = [ iso4217, amount ].join ' '
-        Money.parse value
+        Monetize.parse value
       end
     end
-    
+
     # Setup curency methods for all currencies
     def setup_all_currencies
       currencies_list.keys.each do |iso|
         setup iso
       end
     end
-    
+
     def currencies_list
       @currencies_list ||= CurrencyLoader.load_currencies rescue Money::Currency.load_currencies
     end
   end
-  
+
   module Factory
     # Handy helper method
     def amount(value)
-      Money.parse '%s %s' % [ id.to_s.upcase, value ]
+      Monetize.parse '%s %s' % [ id.to_s.upcase, value ]
     end
   end
-  
+
   when_included do
     Money::Currency.__send__ :include, Factory
     Money.setup_all_currencies

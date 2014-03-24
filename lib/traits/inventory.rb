@@ -1,7 +1,7 @@
 # == Allows the tracking of sotck for purchasable items
 module Chequeout::Inventory
-  
-  # == Product Inventory Management 
+
+  # == Product Inventory Management
   # Adds a stock_levels field to track stock levels
   # If stock_levels is set to nil, the product will not have inventory tracking
   # Creates model callbacks: out_of_stock, stock_replenished
@@ -15,22 +15,22 @@ module Chequeout::Inventory
       scope :out_of_stock,  -> { where 'stock_levels <= 0' }
       scope :in_stock,      -> { where 'stock_levels > 0' }
     end
-    
+
     # See if a product has the number of items avaliable to purchase
     def has_inventory?(amount)
       not(tracking_inventory?) or stock_levels > amount or stock_levels.nil?
     end
-    
+
     # Are we able to track inventory levels for this product
     def tracking_inventory?
       respond_to?(:stock_levels) and not(stock_levels.nil?)
     end
-    
+
     # Is this item in stock
     def in_stock?
       has_inventory? 1
     end
-    
+
     # Is this item out of stock
     def out_of_stock?
       not in_stock?
@@ -40,7 +40,7 @@ module Chequeout::Inventory
     def decrease_inventory!(amount = 1)
       change_inventory_by -amount
     end
-    
+
     # Increase inventory levels
     def increase_inventory!(amount = 1)
       change_inventory_by amount
@@ -48,16 +48,16 @@ module Chequeout::Inventory
 
     # Change inventory by specific level, and save
     def change_inventory_by(amount)
-      return unless stock_levels
+      return unless tracking_inventory?
       set_inventory stock_levels + amount
       save!
     end
-    
+
     # Overrides attribute writer and wraps set_inventory
     def stock_levels=(level)
       set_inventory level
     end
-    
+
     # Change the levels of investory by a specific amount
     def set_inventory(level)
       new_level = level.to_i unless level.blank?
@@ -75,7 +75,7 @@ module Chequeout::Inventory
       end
     end
   end
-  
+
   module FeeAdjustment
     when_included do
       Database.register :purchase_refundable do |table|
@@ -90,46 +90,51 @@ module Chequeout::Inventory
       Database.register :purchase_inventory do |table|
         table.integer :quantity
       end
-      before_basket_modify :update_inventory
+      before_save :update_inventory
       before_destroy :restock_items
-      validates :quantity, :numericality => { :only_integer => true }
-      after_save :remove_zero_quantity_items # Note a `before` callback will cause errors
-      after_find :reset_old_quantity
-      after_initialize :reset_old_quantity
+      validates :quantity, numericality: { only_integer: true }
+      after_save :remove_zero_quantity_items, :reset_old_quantity # Note a `before` callback will cause errors
+      after_destroy :reset_old_quantity
       attr_reader :old_quantity
     end
-    
+
     # Used because on destroy the quantity_modified is probably 0
     def restock_items
       brought_item.try :change_inventory_by, quantity
     end
-    
+
     # Items with 0 quantity shouldn't be saved to the basket
     def remove_zero_quantity_items
-      return :ok unless order.try :basket? and quantity < 1
+      return :ok if quantity > 0 or not(order.try :basket?)
       destroy
       false
     end
-    
+
     # After save/construct/find, we can reset old quanity tracking
     def reset_old_quantity
-      @old_quantity = quantity
+      @old_quantity = nil
     end
-    
-    # Track the quantity changes
-    def quantity=(amount)
-      @old_quantity ||= quantity || 0
-      super amount
+
+    def set_quantity
+      quantity
     end
-    
+
+    # This must be used to invoke inventory changes
+    def set_quantity=(amount)
+      @old_quantity = quantity || 0 unless old_quantity
+      self.quantity = amount
+    end
+
     # Changed number of items purchased
     def quantity_modified
-      (old_quantity) ? quantity - old_quantity : 0
+      return 0 unless old_quantity and quantity
+      quantity - old_quantity
     end
-    
+
     # Callback
     def update_inventory
-      brought_item.try :change_inventory_by, - quantity_modified
+      return if quantity_modified.zero? or not(order.try :basket?)
+      brought_item.try :change_inventory_by, -quantity_modified
     end
   end
 end

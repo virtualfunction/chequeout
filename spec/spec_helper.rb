@@ -14,16 +14,19 @@ end
 
 # Use SQLite for our test DB
 ActiveRecord::Base.establish_connection \
-  :database => ROOT + '/../test.sqlite3',
-  :adapter  => 'sqlite3',
-  :timeout  => 5000
+  database: ROOT + '/../test.sqlite3',
+  adapter:  'sqlite3',
+  timeout:  5000
 
 ActiveRecord::Base.logger = Logger.new StringIO.new
+
 
 # Load support files and migrate
 ActiveSupport::Dependencies.autoload_paths << ROOT + '/../spec/support'
 Dir[ROOT + '/../spec/{factories,support}/**/*.rb'].each { |file| require_dependency file }
-ActiveRecord::Migrator.migrate ROOT + '/migrations/'
+# ActiveRecord::Migrator.migrate ROOT + '/migrations/'
+
+[ Address, Order, PurchaseItem, PromotionDiscountItem, Promotion, FeeAdjustment ].each &:delete_all
 
 RSpec.configure do |config|
   # Remove this line if you don't want RSpec's should and should_not

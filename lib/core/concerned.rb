@@ -8,14 +8,15 @@ module Chequeout::Core::Concerned
       extend ActiveSupport::Concern
       orignal = self
       included do
+        puts orignal.name
         orignal.included_list.each { |item| instance_eval &item }
       end
     end
     included_list << code
   end
-  
+
   protected
-  
+
   def included_list
     @included_list ||= Set.new
   end
