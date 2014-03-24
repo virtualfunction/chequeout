@@ -20,17 +20,15 @@ ActiveRecord::Base.establish_connection \
 
 ActiveRecord::Base.logger = Logger.new StringIO.new
 
-
 # Load support files and migrate
 ActiveSupport::Dependencies.autoload_paths << ROOT + '/../spec/support'
 Dir[ROOT + '/../spec/{factories,support}/**/*.rb'].each { |file| require_dependency file }
-# ActiveRecord::Migrator.migrate ROOT + '/migrations/'
+ActiveRecord::Migrator.migrate ROOT + '/migrations/'
 
-[ Address, Order, PurchaseItem, PromotionDiscountItem, Promotion, FeeAdjustment ].each &:delete_all
+# [ Address, Order, PurchaseItem, PromotionDiscountItem, Promotion, FeeAdjustment ].each &:delete_all
 
 RSpec.configure do |config|
-  # Remove this line if you don't want RSpec's should and should_not
-  # methods or matchers
+  # Remove this line if you don't want RSpec's should and should_not methods or matchers
   require 'rspec/expectations'
   config.include RSpec::Matchers
 
