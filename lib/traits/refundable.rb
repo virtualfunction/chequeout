@@ -3,11 +3,9 @@
 # Refunds are modelled as amendments made via the fee_adjustments. If a
 # transaction has a refund, then it will be added as an adjustment. This is done
 # so that multiple refunds can be made without altering the order history.
-module Chequeout::Refundable
-  module Purchase
-    when_included do
-      register_callback_events :refund_purchase
-    end
+Chequeout.define_feature :refundable do |feature|
+  feature.behaviour_for :purchase_item do |item|
+    register_callback_events :refund_purchase
 
     # Has this been refunded, either fully or partially?
     def refunded?
@@ -16,7 +14,7 @@ module Chequeout::Refundable
 
     # Collection of existing refund adjustments
     def refund_items
-      FeeAdjustment.refund.by_item self
+      self.class.context.model(:fee_adjustment).refund.by_item self
     end
 
     # Number of items that have been refunded to date
@@ -63,10 +61,8 @@ module Chequeout::Refundable
     end
   end
 
-  module Order
-    when_included do
-      register_callback_events :refund_payment
-    end
+  feature.behaviour_for :order do |item|
+    register_callback_events :refund_payment
 
     # Do a full refund, boolean indicates if this has been processed or pending
     # This will individiually make the refunds for each purchased item.
@@ -107,7 +103,7 @@ module Chequeout::Refundable
       return false if fully_refunded? or amount.cents.zero?
       transaction do
         run_callbacks :refund_payment do
-         # Record this refund as an ad-hoc refund adjustment
+          # Record this refund as an ad-hoc refund adjustment
           refund = fee_adjustments.refund.create! \
             display_name: message,
             price:        amount * -1

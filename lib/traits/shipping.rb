@@ -21,21 +21,19 @@
 # quantity, fixed price etc). Hence the abstract version returns Order#zero but
 # implementations delegate to specific versions + call super to trigger other
 # implementations in the dispatch chain.
-module Chequeout::Shipping
+Chequeout.define_feature :shipping do |feature|
 
   # == Order shipping details
   # Note, addresses must be associated to orders prior to including
-  module Order
-    when_included do
-      after_save_shipping_address     :calculate_shipping
-      after_destroy_shipping_address  :calculate_shipping
-      register_callback_events        :shipping_updated
-      validates   :shipping_address, associated: true
-    end
+  feature.behaviour_for :order do |item|
+    after_save_shipping_address     :calculate_shipping
+    after_destroy_shipping_address  :calculate_shipping
+    register_callback_events        :shipping_updated
+    validates   :shipping_address, associated: true
 
     # Base case, overidden versions of this call super
     def calculate_shipping_cost
-      zero
+      methods.collect { |name| __send__ name if name.to_s.starts_with? 'shipping_cost_based_on' }.compact.sum zero
     end
 
     # Create or update the total shipping
@@ -76,17 +74,16 @@ module Chequeout::Shipping
 
   # == Dispatchable Order
   # Field: tracking_code, dispatch_date
-  module DispatchableOrder
-    when_included do
-      scope :dispatched, -> state = true { where 'dispatch_date IS %s NULL' % ('NOT' if state) }
-      attr_accessor :dispatch_pending
-      register_callback_events :dispatched
-      before_save :trigger_dispatch_if_required
-      Database.register :order_tracking do |table|
-        table.datetime  :dispatch_date
-        table.index     :dispatch_date
-      end
+  feature.behaviour_for :order, trait: :dispatchable do |item|
+    item.database_strcuture do |table|
+      table.datetime  :dispatch_date
+      table.index     :dispatch_date
     end
+
+    scope :dispatched, -> state = true { where 'dispatch_date IS %s NULL' % ('NOT' if state) }
+    attr_accessor :dispatch_pending
+    register_callback_events :dispatched
+    before_save :trigger_dispatch_if_required
 
     # Dispatched, based on dispatch date being present
     def dispatched?
@@ -124,16 +121,13 @@ module Chequeout::Shipping
 
   # == Trackable Order
   # Field: tracking_code
-  module TrackableOrder
-    when_included do
-      scope :by_tracking_code, -> code { where tracking_code: tracking_code }
-      include Chequeout::Shipping::Order
-      include Chequeout::Shipping::DispatchableOrder
-      Database.register :order_tracking do |table|
-        table.string    :tracking_code
-        table.index     :tracking_code
-      end
+  feature.behaviour_for :order, trait: :trackable do |item|
+    item.database_strcuture do |table|
+      table.string    :tracking_code
+      table.index     :tracking_code
     end
+
+    scope :by_tracking_code, -> code { where tracking_code: tracking_code }
 
     # Use this to add a tracking code.
     def dispatch_with_tracking!(tracking_code = nil, date = Time.now)
@@ -144,40 +138,17 @@ module Chequeout::Shipping
     end
   end
 
-  # == Add to Product
-  # Field: weight (in grams), use_weight_for_shipping (or method '?')
-  module Item
-    when_included do
-      Database.register :item_shipping_by_weight do |table|
-        table.boolean   :use_weight_for_shipping, default: true, null: true
-        table.integer   :weight
-      end
+  # == For products that have fixed shipping costs
+  feature.behaviour_for :product, trait: :fixed_cost_shipping do |item|
+    item.database_strcuture do |table|
+      table.integer   :shipping_price_amount
+      table.string    :shipping_price_currency
     end
 
-    # If an item has a weight
-    def has_shipping_weight?
-      weight and use_weight_for_shipping?
-    end
+    Money.composition_on self, :shipping_price if table_exists? and 'shipping_price_currency'.in? column_names
   end
 
-  # == For products that have fixed shipping costs
-  module CalculateByFixedCost
-    module Item
-      when_included do
-        Database.register :item_shipping_cost do |table|
-          table.integer   :shipping_price_amount
-          table.string    :shipping_price_currency
-        end
-
-        Money.composition_on self, :shipping_price
-      end
-    end
-
-    # Get the shipping costs by weight and call any other methods in the dispatch chain
-    def calculate_shipping_cost
-      super + shipping_cost_based_on_fixed_cost
-    end
-
+  feature.behaviour_for :order, trait: :fixed_cost_shipping do |item|
     def shipping_cost_based_on_fixed_cost
       purchase_items.inject zero do |sum, purchase|
         item = purchase.brought_item
@@ -187,15 +158,24 @@ module Chequeout::Shipping
     end
   end
 
+  # == Add to Product
+  # Field: weight (in grams), use_weight_for_shipping (or method '?')
+  feature.behaviour_for :product, trait: :weight_based_shipping do |item|
+    item.database_strcuture do |table|
+      table.boolean   :use_weight_for_shipping, default: true, null: true
+      table.integer   :weight
+    end
+
+    # If an item has a weight
+    def has_shipping_weight?
+      weight and use_weight_for_shipping?
+    end
+  end
+
   # == Work out shipping price based on aggregate order weight
   # If a purchased item is marked to alter shipping based on weight it will
   # modify the order based on this.
-  module CalculateByWeight
-    # Get the shipping costs by weight and call any other methods in the dispatch chain
-    def calculate_shipping_cost
-      super + shipping_cost_based_on_weight
-    end
-
+  feature.behaviour_for :order, trait: :weight_based_shipping do |item|
     # Sum up the total of all items that weight something
     def total_weight
       purchase_items.inject 0 do |sum, purchase|
@@ -214,6 +194,7 @@ module Chequeout::Shipping
     # look up the price in the DB based on desired service
     def shipping_weight_price(weight)
       cost = case weight
+        when nil              then '0'
         when 0     ... 100    then '0.29'
         when 100   ... 500    then '2.60'
         when 500   ... 2000   then '4.99'

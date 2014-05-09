@@ -1,20 +1,18 @@
 require 'spec_helper'
 
-Refund = Chequeout::Refundable
-
-describe Refund do
+describe :refund do
   let(:order) { FactoryGirl.create(:filled_basket_order).spy_on :refund_payment }
   let(:date)  { Time.parse 'January 2015' }
 
   describe Order do
     it 'has refund management' do
-      expect(Order).to be < Refund::Order
+      expect(Order.features).to include(:refundable)
     end
   end
 
   describe PurchaseItem do
     it 'has refund management' do
-      expect(PurchaseItem).to be < Refund::Purchase
+      expect(PurchaseItem.features).to include(:refundable)
     end
   end
 

@@ -58,7 +58,8 @@ module Chequeout::Core::CurrencyExtensions
     end
   end
 
-  when_included do
+  extend ActiveSupport::Concern
+  included do
     Money::Currency.__send__ :include, Factory
     Money.setup_all_currencies
   end

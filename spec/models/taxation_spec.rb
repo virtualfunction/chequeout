@@ -1,13 +1,11 @@
 require 'spec_helper'
 
-Tax = Chequeout::Taxation
-
-describe Tax do
+describe :tax do
   # TODO: Test event hooks?
 
-  specify { expect(Order).to be < Tax::Order }
-  specify { expect(PurchaseItem).to be < Tax::Purchase }
-  specify { expect(Product).to be < Tax::Item }
+  [ Order, PurchaseItem, Product ].each do |model|
+    specify { expect(model.features).to include(:taxation) }
+  end
 
   describe 'calcuations' do
     let(:order) { FactoryGirl.create :filled_basket_order }

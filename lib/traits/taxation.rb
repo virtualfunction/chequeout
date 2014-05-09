@@ -13,15 +13,13 @@
 #
 # Orders will need to include Taxation::Order. This will use calculate_tax_cost
 # to sum up the tax from each purchase.
-module Chequeout::Taxation
+Chequeout.define_feature :taxation do |feature|
 
   # == Product / Brought Item taxation specific
   # Adds tax_rate field to products. Taxation::Purchase does the caluations
-  module Item
-    when_included do
-      Database.register :item_tax_rates do |table|
-        table.decimal :tax_rate
-      end
+  feature.behaviour_for :product do |item|
+    item.database_strcuture do |table|
+      table.decimal :tax_rate
     end
   end
 
@@ -29,7 +27,7 @@ module Chequeout::Taxation
   # Typically the default behaviour here is to look at the brought item / product
   # to see what tax_rate it falls into. The tax_cost method will return the cost
   # based on the item price/tax_rate/quantity
-  module Purchase
+  feature.behaviour_for :purchase_item do |item|
     # Calculates the amount of tax for this purchased product
     def tax_cost
       total_price * tax_rate
@@ -45,12 +43,10 @@ module Chequeout::Taxation
 
   # == Taxation on an Order
   # Note: Addresses must be related to an order prior to including
-  module Order
-    when_included do
-      after_save_address        :calculate_tax
-      after_destroy_address     :calculate_tax
-      register_callback_events  :taxation_updated
-    end
+  feature.behaviour_for :order do |item|
+    after_save_address        :calculate_tax
+    after_destroy_address     :calculate_tax
+    register_callback_events  :taxation_updated
 
     # Adjustments for tax
     def tax_scope

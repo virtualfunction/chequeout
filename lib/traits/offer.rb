@@ -1,12 +1,22 @@
 # == Offer / Promotion Coupon Support
-module Chequeout::Offer
+Chequeout.define_feature :offer do |feature|
 
   # == Acts as a template for a coupon.
   #
   # Coupons are basically redeemed/used instances of promotion
   # Method: discount
-  module Promotional
-    module ClassMethods
+  feature.behaviour_for :promotion do |item|
+    item.database_strcuture do |table|
+      # Discounts
+      table.decimal     :discount_amount
+      table.string      :discount_currency, :discount_strategy
+      table.index       :discount_amount
+      # Details
+      table.text        :terms_and_conditions, :details
+      table.string      :summary
+    end
+
+    class << self
       # Used on a scope to see if a bunch of relevant/scoped promotions can be applied to the order
       def try_and_appy_to(order)
         find_each do |promotion|
@@ -20,30 +30,16 @@ module Chequeout::Offer
       end
     end
 
-    when_included do
-      Database.register :promotional_discounts do |table|
-        table.decimal     :discount_amount
-        table.string      :discount_currency
-        table.string      :discount_strategy
-        table.index       :discount_amount
-      end
+    validates :summary, :discount, presence: true
+    register_callback_events :apply_to_order, :order_applicable
+    context.model(:fee_adjustment).related_to self
+    ::Money.composition_on self, :discount
+    attr_accessor :order
+    attr_reader   :offer_options
 
-      Database.register :promotional_details do |table|
-        table.text        :terms_and_conditions, :details
-        table.string      :summary
-      end
-
-      validates :summary, :discount, presence: true
-      register_callback_events :apply_to_order
-      ::FeeAdjustment.related_to self
-      ::Money.composition_on self, :discount
-      attr_accessor :order
-      attr_reader   :offer_options
-
-      scope :by_discount_code, -> text {
-        where discount_code: text.to_s.strip
-      }
-    end
+    scope :by_discount_code, -> text {
+      where discount_code: text.to_s.strip
+    }
 
     # Add the coupon adjustment if we're allowed to apply it
     def apply_to(order, options = Hash.new)
@@ -55,6 +51,16 @@ module Chequeout::Offer
       end
     end
 
+    # Percentage discount, like 20%
+    def percentage_discount
+      order.sub_total * (discount_amount / 100.0)
+    end
+
+    # Fixed amount in given currency
+    def fixed_discount
+      discount
+    end
+
     # Discount code exists?
     def discount_code?
       discount_code.present?
@@ -62,8 +68,8 @@ module Chequeout::Offer
 
     # Work out discount based on strategy, default to fixed
     def calculated_discount
-      code = DiscountStrategy.registry[discount_strategy.to_sym || :fixed]
-      (code) ? instance_eval(&code) : order.zero
+      action = '%s_discount' % discount_strategy
+      (respond_to? action) ? __send__(action) : order.zero
     end
 
     # Create a new coupon instance, if not done already
@@ -114,10 +120,8 @@ module Chequeout::Offer
   end
 
   # Ensure related coupons get removed when removing a purchase
-  module Purchase
-    when_included do
-      after_destroy :check_coupons
-    end
+  feature.behaviour_for :purchase_item do |item|
+    after_destroy :check_coupons
 
     def check_coupons
       order.remove_non_applicable_coupons
@@ -125,39 +129,33 @@ module Chequeout::Offer
   end
 
   # Promotions can have multiple items, so this acts as a join relation
-  module PromotionDiscountableItem
-    when_included do
-      belongs_to :promotion
-      belongs_to :discounted, polymorphic: true
-
-      Database.register :promotional_discount_items do |table|
-        table.belongs_to  :promotion
-        table.belongs_to  :discounted, polymorphic: true
-      end
-
-      validates :promotion, :discounted, presence: true
-      # Make sure this is unique for both items
-      validates :promotion_id, uniqueness: { scope: [ :discounted_id, :discounted_type ] }
-      validates :discounted_id, uniqueness: { scope: [ :promotion_id, :discounted_type ] }
-      validates :discounted_type, uniqueness: { scope: [ :discounted_id, :promotion_id ] }
-
-      scope :by_discounted_type, -> klass {
-        where discounted_type: klass.try(:base_class) || klass.to_s
-      }
-      scope :by_discounted, -> item {
-        by_discounted_type(item.class).where discounted_id: item.id
-      }
+  feature.behaviour_for :promotion_discount_item do |item|
+    item.database_strcuture do |table|
+      table.belongs_to  :promotion
+      table.belongs_to  :discounted, polymorphic: true
     end
+
+    belongs_to :promotion
+    belongs_to :discounted, polymorphic: true
+
+    validates :promotion, :discounted, presence: true
+    # Make sure this is unique for both items
+    validates_relations_polymorphic_uniqueness_of :discounted, :promotion
+
+    scope :by_discounted_type, -> klass {
+      where discounted_type: klass.try(:base_class) || klass.to_s
+    }
+    scope :by_discounted, -> item {
+      by_discounted_type(item.class).where discounted_id: item.id
+    }
   end
 
   # == Look up coupons by code for orders via virtual atttributes
-  module Order
-    when_included do
-      attr_accessor :pending_coupon_code
-      after_save    :remove_non_applicable_coupons, :apply_pending_coupon
-      scope         :by_promotion,    -> item { joins(:fee_adjustments).merge ::FeeAdjustment.by_item(item) }
-      scope         :by_promotion_id, -> id   { joins(:fee_adjustments).merge ::FeeAdjustment.by_item(Promotion.find(id)) }
-    end
+  feature.behaviour_for :order do |item|
+    attr_accessor :pending_coupon_code
+    after_save    :remove_non_applicable_coupons, :apply_pending_coupon
+    scope         :by_promotion,    -> item { joins(:fee_adjustments).merge ::FeeAdjustment.by_item(item) }
+    scope         :by_promotion_id, -> id   { joins(:fee_adjustments).merge ::FeeAdjustment.by_item(Promotion.find(id)) }
 
     # Remove any coupons for basket if the promotion no longer applies (ignoring if it's been redeemed prior)
     def remove_non_applicable_coupons
@@ -195,7 +193,7 @@ module Chequeout::Offer
         remove_coupon
         :coupon_removed
       elsif pending_coupon_code.present? and not coupon_code == pending_coupon_code
-        Promotion.using_code(pending_coupon_code).any? do |promotion|
+        self.class.context.model(:promotion).using_code(pending_coupon_code).any? do |promotion|
           promotion.apply_to self
         end
         :coupon_applied
@@ -208,160 +206,70 @@ module Chequeout::Offer
   end
 
   # == Add to FeeAdjustment if using discount code
-  module DiscountCodeAdjustment
-    when_included do
-      scope :by_discount_code, -> code { where discount_code: code }
-      scope :by_discounted_item_type, -> klass {
-        where discounted_item_type: klass.try(:base_class) || klass.to_s
-      }
-      scope :by_discounted_item, -> item {
-        by_discounted_item_type(item.class).where discounted_item_id: item.id
-      }
-      Database.register :fee_adjustments do |table|
-        table.string :discount_code
-        table.index  :discount_code
-      end
+  feature.behaviour_for :fee_adjustment do |item|
+    item.database_strcuture do |table|
+      table.belongs_to :discounted_item, polymorphic: true
+      table.string :discount_code
+      table.index  :discount_code
     end
+
+    scope :by_discount_code, -> code { where discount_code: code }
+    scope :by_discounted_item_type, -> klass {
+      where discounted_item_type: klass.try(:base_class) || klass.to_s
+    }
+    scope :by_discounted_item, -> item {
+      by_discounted_item_type(item.class).where discounted_item_id: item.id
+    }
   end
 
-  # Define a strategy for creating discounts to orders
-  def self.discount_strategy(name, &code)
-    @strategy ||= Hash.new
-    @strategy[name] = code
-  end
+  # ---[ OFFER TYPES ]---
 
-  # Registry for different discount techniques
-  class DiscountStrategy
-    class << self
-
-      def registry
-        @registry ||= Hash.new
-      end
+  feature.behaviour_for :promotion, trait: :expiration do |item|
+    item.database_strcuture do |table|
+      table.datetime :starts_at, :finishes_at
+      table.index :starts_at
+      table.index :finishes_at
     end
 
-    def initialize(name, &code)
-      DiscountStrategy.registry[name] = code
-    end
-  end
+    before_order_applicable :check_expiration
 
-  # Percentage discount, like 20%
-  DiscountStrategy.new :percentage do
-    order.sub_total * (discount_amount / 100.0)
-  end
-
-  # Fixed amount in given currency
-  DiscountStrategy.new :fixed do
-    discount
-  end
-
-  # == Registry to hold list of criteria items
-  module Criteron
-    class << self
-      # Registry for criteria
-      def items
-        @items ||= Hash.new do |hash, key|
-          hash[key] = Module.new
-        end
-      end
-
-      def targets
-        @targets ||= Set.new
-      end
-
-      def apply_offer_criteria_to(target)
-        items.each do |name, item|
-          target.__send__ :include, item
-        end
-        targets << target
-      end
-    end
-
-    when_included do
-      register_callback_events :order_applicable
-      Chequeout::Offer::Criteron.apply_offer_criteria_to self
-    end
-  end
-
-  # == Add new coupon criteria as methods in here
-  class Criteria
-    attr_reader :name, :container
-
-    def initialize(name, &code)
-      @container = Criteron.items[name]
-      @name = name
-      instance_eval &code
-    end
-
-    # Manual delegation (used because it's protected)
-    def when_included(&code)
-      container.__send__ :when_included, &code
-    end
-
-    # Manual delegation (used because it's protected)
-    def define_method(name, &code)
-      container.__send__ :define_method, name, &code
-    end
-
-    # Define the logic to see if promotion applies. This returns false to
-    # prevent a promotion being seen as valid, much like Rails filters and
-    # validations
-    #
-    # This runs in the context/scope of the promotion, and 'order' acts as a
-    # temporary accessor to the order in question
-    #
-    # The filter is turned into a method behind the scenes, which can be handy
-    # for debugging
-    def filter(&code)
-      criteria = '%s_criteria' % name
-      # define_method criteria, &code
-      define_method criteria do
-        # puts criteria
-        instance_eval &code
-      end
-      when_included { before_order_applicable criteria }
-    end
-
-    # Set up DB schema
-    def database(action = nil, &code)
-      when_included do
-        Database.register action || :promotional_crtieria, &code
-      end
-    end
-  end
-
-  Criteria.new :expiration do
-    filter do
+    def check_expiration
       # Use out of bound dates if not set as these will be ignored
       start   = try(:starts_at)   || Time.parse('Jan 1970')
       finish  = try(:finishes_at) || Time.parse('Jan 2050')
       date    = order.created_at
       start < date and date < finish
     end
-
-    database do |table|
-      table.datetime :starts_at, :finishes_at
-      table.index :starts_at
-      table.index :finishes_at
-    end
   end
 
-  Criteria.new :prevent_negative_balance do
-    filter do
+  feature.behaviour_for :promotion, trait: :prevent_negative_balance do |item|
+    before_order_applicable :check_for_negative_balance
+
+    def check_for_negative_balance
       offer_options[:skip_redeemed] or (not discount) or (order.total_price - discount >= order.zero)
     end
   end
 
-  Criteria.new :disableable do
-    filter { not disabled? }
-    database do |table|
+  feature.behaviour_for :promotion, trait: :disableable do |item|
+    item.database_strcuture do |table|
       table.boolean :disabled, default: false, null: false
       table.index   :disabled
     end
+
+    before_order_applicable :check_disableable
+
+    def check_disableable
+      not disabled?
+    end
   end
 
-  Criteria.new :item_specific do
-    # NB: This code is a bit shit (aka hideously inefficient, but probably doesn't matter for now)
-    filter do
+  feature.behaviour_for :promotion, trait: :item_specific do |item|
+    # TODO: Table def's for promotion_discount_items
+
+    before_order_applicable :check_discount_items
+    has_many :promotion_discount_items, dependent: :destroy, inverse_of: :promotion
+
+    def check_discount_items
       discounted = discounted_items
       # Set insection order purchases and promotion discount items
       products = discounted.select do |item|
@@ -374,48 +282,42 @@ module Chequeout::Offer
       valid and not products.size.zero? unless discounted.size.zero?
     end
 
-    define_method :discounted_items do
+    def discounted_items
       promotion_discount_items.collect &:discounted
-    end
-
-    when_included do
-      has_many :promotion_discount_items, dependent: :destroy, inverse_of: :promotion
     end
   end
 
-  Criteria.new :discount_code do
-    filter do
-      offer_options[:skip_redeemed] or ((applies_with_coupon_code? or applies_with_offer_token?) and not applied_alredy?)
-    end
-
-    # Check with offer token (FeeAdjustment)
-    define_method :applies_with_offer_token? do
-      offer_tokens.by_discount_code(discount_code).count > 0 unless try(:discount_code).blank?
-    end
-
-    # See if this has been entered using the order virtual accessor
-    define_method :applies_with_coupon_code? do
-      order.pending_coupon_code == discount_code
-    end
-
-    # Scan for matching codes
-    define_method :applied_alredy? do
-      order.coupons.any? { |item| item.discount_code == discount_code }
-    end
-
-    # Offer tokens are fee adjustments that simply hold the coupon code
-    define_method :offer_tokens do
-      order.fee_adjustments.offer_token
-    end
-
-    database do |table|
+  feature.behaviour_for :promotion, trait: :discount_code do |item|
+    item.database_strcuture do |table|
       table.string :discount_code
       table.index  :discount_code
     end
 
-    when_included do
-      scope :by_discount_code, -> code { where discount_code: code }
+    before_order_applicable :check_discount_code
+    scope :by_discount_code, -> code { where discount_code: code }
+
+    def check_discount_code
+      offer_options[:skip_redeemed] or ((applies_with_coupon_code? or applies_with_offer_token?) and not applied_alredy?)
+    end
+
+    # Check with offer token (FeeAdjustment)
+    def applies_with_offer_token?
+      offer_tokens.by_discount_code(discount_code).count > 0 unless try(:discount_code).blank?
+    end
+
+    # See if this has been entered using the order virtual accessor
+    def applies_with_coupon_code?
+      order.pending_coupon_code == discount_code
+    end
+
+    # Scan for matching codes
+    def applied_alredy?
+      order.coupons.any? { |item| item.discount_code == discount_code }
+    end
+
+    # Offer tokens are fee adjustments that simply hold the coupon code
+    def offer_tokens
+      order.fee_adjustments.offer_token
     end
   end
 end
-

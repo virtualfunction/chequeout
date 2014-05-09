@@ -1,18 +1,16 @@
 require 'spec_helper'
 
-Inventory = Chequeout::Inventory
-
-describe Inventory do
+describe :inventory do
 
   describe Product do
     it 'has inventory tracking' do
-      expect(Product).to be < Inventory::ItemManagement
+      expect(Product.features).to include(:inventory)
     end
   end
 
   describe PurchaseItem do
     it 'has inventory tracking' do
-      expect(PurchaseItem).to be < Inventory::Purchaseable
+      expect(PurchaseItem.features).to include(:inventory)
     end
   end
 
@@ -22,11 +20,11 @@ describe Inventory do
     let(:item) { purchase.brought_item.spy_on *Product.event_list }
 
     it 'has managed products' do
-      expect(item).to be_kind_of(Inventory::ItemManagement)
+      expect(item).to respond_to(:in_stock?)
     end
 
     it 'tracks purchased quantities' do
-      expect(purchase).to be_kind_of(Inventory::Purchaseable)
+      expect(purchase).to respond_to(:set_quantity)
     end
 
     it 'changes item stock levels when purchase quantity is changed' do

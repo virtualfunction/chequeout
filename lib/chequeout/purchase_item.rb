@@ -5,9 +5,20 @@
 # Purchaseable items (i.e. that implement PurchaseItem::SafeGuard) must respond to:
 # * display_name
 # * price
-module Chequeout::PurchaseItem
+Chequeout.define_model :purchase_item do |item|
+  item.database_strcuture do |table|
+    table.references  :brought_item, polymorphic: true
+    table.belongs_to  :order
+    table.integer     :price_amount
+    table.string      :price_currency, :display_name
+    table.timestamps
+    [  :brought_item_type, :brought_item_id, :order_id, :price_amount ].each do |field|
+      table.index field
+    end
+  end
+
   # This doubles up in places as a type-safety check
-  module SafeGuard
+  module Chequeout::PurchaseSafeGuard
     # If someone has purchased the item, we should block it's destruction as a
     # a rule of thumb
     def destructable?
@@ -15,24 +26,25 @@ module Chequeout::PurchaseItem
     end
   end
 
-  module ClassMethods
+  class << self
     # Called by models related to this by association
     def related_to(klass)
-      klass.class_eval do
+      my = self
+      klass.class_exec do
         has_many :purchases,
           dependent:  :destroy,
-          class_name: 'PurchaseItem',
+          class_name: my.name,
           as:         :brought_item
         scope :has_purchases, -> { joins :purchases }
         # Protect brought items - TODO, do we need this, we copy the
         # display_name + price into the purchase
         before_destroy :destructable?
-        include Chequeout::PurchaseItem::SafeGuard
+        include Chequeout::PurchaseSafeGuard
       end
       # Create back association
       items_name = klass.name.underscore.pluralize.to_sym
       scope items_name, -> { by_item_type klass }
-      ::Order.class_eval do
+      context.model(:order).class_exec do
         has_many items_name,
           through:      :purchases,
           source:       :brought_item,
@@ -41,64 +53,51 @@ module Chequeout::PurchaseItem
     end
   end
 
-  when_included do
-    Database.register :purchase_order_lines do |table|
-      table.references  :brought_item, polymorphic: true
-      table.belongs_to  :order
-      table.integer     :price_amount
-      table.string      :price_currency, :display_name
-      table.timestamps
-      [  :brought_item_type, :brought_item_id, :order_id, :price_amount ].each do |field|
-        table.index field
+  # Wrap with custom basket callbacks, this must be done before anything else to
+  # preserve the callback dispatch order
+  [ :create, :update, :destroy ].each do |action|
+    class_eval <<-CODE
+      def #{action}(*args)
+        (order.try :basket?) ? run_callbacks(:basket_modify) { super } : super
       end
-    end
-
-    # Wrap with custom basket callbacks, this must be done before anything else to
-    # preserve the callback dispatch order
-    [ :create, :update, :destroy ].each do |action|
-      class_eval <<-CODE
-        def #{action}(*args)
-          (order.try :basket?) ? run_callbacks(:basket_modify) { super } : super
-        end
-      CODE
-    end
-
-    register_callback_events :basket_modify
-    Money.composition_on self, :price
-
-    belongs_to  :order
-    belongs_to  :brought_item, polymorphic: true
-
-    # By item
-    scope :by_item_type, -> klass {
-      name = (klass.respond_to? :base_class) ? klass.base_class : klass.to_s
-      where brought_item_type: name
-    }
-    scope :by_item, -> item {
-      by_item_type(item.class).where brought_item_id: item.id
-    }
-    # By order
-    scope :by_order, -> item {
-      where order_id: item.id
-    }
-
-    validates :brought_item, :order, presence: true
-    validate  :test_item_type
-
-    before_validation :unit_price
-    # Validate price?
-
-    # attr_protected :price
-    attr_accessor :force_copy_details
-
-    # Don't duplicate an item
-    validates_relations_polymorphic_uniqueness_of :brought_item, :order
+    CODE
   end
+
+  register_callback_events :basket_modify
+  Money.composition_on self, :price
+
+  belongs_to  :order
+  belongs_to  :brought_item, polymorphic: true
+
+  # By item
+  scope :by_item_type, -> klass {
+    name = (klass.respond_to? :base_class) ? klass.base_class : klass.to_s
+    where brought_item_type: name
+  }
+  scope :by_item, -> item {
+    by_item_type(item.class).where brought_item_id: item.id
+  }
+  # By order
+  scope :by_order, -> item {
+    where order_id: item.id
+  }
+
+  validates :brought_item, :order, presence: true
+  validate  :test_item_type
+
+  before_validation :unit_price
+  # Validate price?
+
+  # attr_protected :price
+  attr_accessor :force_copy_details
+
+  # Don't duplicate an item
+  validates_relations_polymorphic_uniqueness_of :brought_item, :order
 
   # Only allow related types to be assigned
   def test_item_type
     klass = brought_item_type.constantize rescue nil
-    errors.add :brought_item_type, 'bad type found' if klass and Chequeout::PurchaseItem::SafeGuard < klass
+    errors.add :brought_item_type, 'bad type found' if klass and Chequeout::PurchaseSafeGuard < klass
   end
 
   # Copy price from item, assuming it has a purchase price

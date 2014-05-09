@@ -6,8 +6,20 @@
 # to a cart without signing in, and even checkout in some cases anonymously, we use a session_uid field
 # to track orders while in the 'basket' state. This later can be tied to a user account, or whatever is
 # fit for the purpose
-module Chequeout::Order
-  module ClassMethods
+Chequeout.define_model :order do |item|
+
+  item.database_strcuture do |table|
+    table.timestamps
+    table.text      :internal_notes, :customer_notes
+    table.datetime  :payment_date
+    table.string    :status, :session_uid, :total_currency
+    table.decimal   :total_amount
+    [ :total_amount, :status, :session_uid, :created_at, :updated_at ].each do |field|
+      table.index field
+    end
+  end
+
+  class << self
     # List of allow order statuses. Can be appended with Order.status_list << 'order_state'
     def status_list
       @status_list ||= %w[
@@ -24,71 +36,56 @@ module Chequeout::Order
     end
   end
 
-  when_included do
-    Database.register :orderable do |table|
-      table.timestamps
-      table.text      :internal_notes, :customer_notes
-      table.datetime  :payment_date
-      table.string    :status, :session_uid, :total_currency
-      table.decimal   :total_amount
-      [ :total_amount, :status, :session_uid, :created_at, :updated_at ].each do |field|
-        table.index field
-      end
+  register_callback_events :completed_payment, :failed_payment, :refund_payment, :process_payment, :merchant_processing
+
+  # Address and money setup, must be done prior to tax/shipping extensions
+  item.model(:address).related_to self
+  Money.composition_on self, :total
+
+  with_options dependent: :destroy, inverse_of: :order do |__|
+    __.has_many :purchase_items,  class_name: item.model(:purchase_item).name
+    __.has_many :fee_adjustments, class_name: item.model(:fee_adjustment).name
+  end
+
+  time_convert = -> time do
+    time.is_a?(Time) ? time : (Time.parse time rescue Time.now)
+  end
+
+  scope :purchased_after,     -> time { where '%s.created_at > ?' % table_name, time_convert.call(time) }
+  scope :purchased_before,    -> time { where '%s.created_at < ?' % table_name, time_convert.call(time) }
+  scope :by_status,           -> status { where status: status }
+  scope :in_order_of_payment, -> { order '%s.payment_date DESC' % table_name }
+  scope :has_item, -> item {
+    select('DISTINCT %s.*' % table_name).
+    joins(:purchase_items).
+    merge item.model(:purchase_item).by_item(item)
+  }
+
+  # Might need to rethink these, and see how ActiveMerchant does things
+  status_list.each do |state|
+    scope state, -> { by_status state }
+    register_callback_events state
+
+    define_method '%s?' % state do
+      status == state
     end
 
-    register_callback_events :completed_payment, :failed_payment, :refund_payment, :process_payment, :merchant_processing
-
-    # Address and money setup, must be done prior to tax/shipping extensions
-    ::Address.related_to self
-    Money.composition_on self, :total
-
-    with_options dependent: :destroy, inverse_of: :order do |__|
-      __.has_many :purchase_items
-      __.has_many :fee_adjustments
-    end
-
-    time_convert = -> time do
-      time.is_a?(Time) ? time : (Time.parse time rescue Time.now)
-    end
-
-    scope :purchased_after,     -> time { where '%s.created_at > ?' % table_name, time_convert.call(time) }
-    scope :purchased_before,    -> time { where '%s.created_at < ?' % table_name, time_convert.call(time) }
-    scope :by_status,           -> status { where status: status }
-    scope :in_order_of_payment, -> { order '%s.payment_date DESC' % table_name }
-    scope :has_item, -> item {
-      select('DISTINCT %s.*' % table_name).
-      joins(:purchase_items).
-      merge ::PurchaseItem.by_item(item)
-    }
-
-    # Might need to rethink these, and see how ActiveMerchant does things
-    status_list.each do |state|
-      scope state, -> { by_status state }
-      register_callback_events state
-
-      define_method '%s?' % state do
-        status == state
-      end
-
-      define_method '%s!' % state do
-        transaction do
-          run_callbacks state do
-            self.status = state
-            save!
-          end
+    define_method '%s!' % state do
+      transaction do
+        run_callbacks state do
+          self.status = state
+          save!
         end
       end
     end
-
-    validates :session_uid, :status, presence: true
-    validates :billing_address, presence: true, associated: true, unless: :basket?
-    validates :status, inclusion: { in: status_list }, allow_nil: true
-    validate  :ensure_not_empty!, unless: :basket?
-
-    attr_writer :currency
-
-    # attr_protected :status, :total, :payment_date, :user_id, :session_uid
   end
+
+  validates :session_uid, :status, presence: true
+  validates :billing_address, presence: true, associated: true, unless: :basket?
+  validates :status, inclusion: { in: status_list }, allow_nil: true
+  validate  :ensure_not_empty!, unless: :basket?
+
+  attr_writer :currency
 
   # No money in the default order currency, used for summing caluations
   def zero

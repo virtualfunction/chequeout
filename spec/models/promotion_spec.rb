@@ -1,6 +1,6 @@
 require 'spec_helper'
 
-Offer = Chequeout::Offer
+# Offer = Chequeout::Offer
 
 describe Promotion do
 
@@ -8,9 +8,9 @@ describe Promotion do
   let(:order) { FactoryGirl.create :filled_basket_order }
   let(:promotion) { FactoryGirl.create :promotion }
 
-  specify { expect(Promotion).to be < Offer::Promotional }
-  specify { expect(FeeAdjustment).to be < Offer::DiscountCodeAdjustment }
-  specify { expect(PromotionDiscountItem).to be < Offer::PromotionDiscountableItem }
+  specify { expect(Promotion.features).to include(:offer) }
+  specify { expect(FeeAdjustment.features).to include(:offer) }
+  specify { expect(PromotionDiscountItem.features).to include(:offer) }
 
   describe 'offer discount' do
     let(:coupons) { order.fee_adjustments.coupon }

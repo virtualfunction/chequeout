@@ -1,12 +1,10 @@
 require 'spec_helper'
 
-Shipping = Chequeout::Shipping
+describe :shipping do
 
-describe Shipping do
-
-  specify { expect(Order).to be   < Shipping::TrackableOrder }
-  specify { expect(Order).to be   < Shipping::CalculateByWeight }
-  specify { expect(Product).to be < Shipping::Item }
+  [ Product, Order ].each do |model|
+    specify { expect(model.features).to include(:shipping) }
+  end
 
   module DummyWeightShipping
     def shipping_weight_price(weight)

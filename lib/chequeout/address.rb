@@ -1,28 +1,18 @@
 # == Addresses for users/orders
 #
 # Used for card billing / subscriptions etc, can belong to users, orders, etc
-module Chequeout::Address
-  module Addressable
-    when_included do
-      # Create billing_address / shipping_address methods
-      Address.roles.each do |role|
-        define_method '%s_address' % role do
-          addresses.by_role(role).first
-        end
-      end
-    end
-
-    # Copy the main addresses
-    def copy_addresses_from(other)
-      Address.roles.each do |name|
-        if addresses.by_role(name).count.zero?
-          addresses << other.addresses.by_role(name).first.clone
-        end
-      end
+Chequeout.define_model :address do |item|
+  item.database_strcuture do |table|
+    table.integer     :position
+    table.references  :addressable, polymorphic: true
+    table.string      :postal_code, :country, :region, :locality, :street, :building, :role, :purpose, :email, :first_name, :last_name, :phone
+    table.timestamps
+    [ :position, :addressable_type, :addressable_id, :role, :purpose ].each do |field|
+      table.index field
     end
   end
 
-  module ClassMethods
+  class << self
     # This is how we differentiate between different addresses
     def roles
       @roles ||= Set.new %w[ home work gift ]
@@ -35,18 +25,35 @@ module Chequeout::Address
 
     # Setup the relation
     def related_to(klass)
-      klass.class_eval do
-        include Chequeout::Address::Addressable, Chequeout::Core::AttrScoped
+      klass.class_exec do
+        include Chequeout::Core::AttrScoped
+
         attr_scoped :altered_address
         # Setup main polymorphic association
         options = {
           dependent:  :destroy,
           as:         :addressable }
         has_many :addresses, -> { order :position }, options
+        address = context.model :address
+
+        address.roles.each do |role|
+          define_method '%s_address' % role do
+            addresses.by_role(role).first
+          end
+        end
+
+        def copy_addresses_from(other)
+          address.roles.each do |name|
+            if addresses.by_role(name).count.zero?
+              addresses << other.addresses.by_role(name).first.clone
+            end
+          end
+        end
+
         # Purpose specific actions
-        Address.purposes.clone.add('').each do |purpose|
+        address.purposes.clone.add('').each do |purpose|
           # Purpose specification association
-          details = options.merge class_name: 'Address'
+          details = options.merge class_name: address.name
           unless purpose.blank?
             related_purpose = ('%s_address' % purpose).to_sym
             has_one related_purpose, -> { where purpose: purpose }, details
@@ -62,66 +69,54 @@ module Chequeout::Address
     end
   end
 
-  when_included do
-    Database.register :addressable do |table|
-      table.integer     :position
-      table.references  :addressable, polymorphic: true
-      table.string      :postal_code, :country, :region, :locality, :street, :building, :role, :purpose, :email, :first_name, :last_name, :phone
-      table.timestamps
-      [ :position, :addressable_type, :addressable_id, :role, :purpose ].each do |field|
-        table.index field
-      end
-    end
+  default_scope       -> { order :position }
+  scope :by_role,     -> role     { where role: role }
+  scope :by_purpose,  -> purpose  { where purpose: purpose }
 
-    default_scope       -> { order :position }
-    scope :by_role,     -> role     { where role: role }
-    scope :by_purpose,  -> purpose  { where purpose: purpose }
+  belongs_to :addressable, polymorphic: true
 
-    belongs_to :addressable, polymorphic: true
+  # Extra scopes
+  purposes.each do |purpose|
+    scope purpose, -> { by_purpose purpose }
+  end
+  roles.each do |role|
+    scope role, -> { by_role role }
+  end
 
-    # Extra scopes
-    purposes.each do |purpose|
-      scope purpose, -> { by_purpose purpose }
-    end
-    roles.each do |role|
-      scope role, -> { by_role role }
-    end
+  # This enables us to prioritize addresses
+  # acts_as_list scope: [ :addressable_type, :addressable_id ]
+  before_validation :ensure_contact_details
+  validates :purpose, :postal_code, :country, :street, :building, :name, presence: true
+  with_options allow_nil: true do |__|
+    __.validates :postal_code, :country, :region, :locality, :street, :building, length: { maximum: 255 }
+    __.validates :role,     inclusion: { in: roles }
+    __.validates :purpose,  inclusion: { in: purposes }
+  end
 
-    # This enables us to prioritize addresses
-    # acts_as_list scope: [ :addressable_type, :addressable_id ]
-    before_validation :ensure_contact_details
-    validates :purpose, :postal_code, :country, :street, :building, :name, presence: true
-    with_options allow_nil: true do |__|
-      __.validates :postal_code, :country, :region, :locality, :street, :building, length: { maximum: 255 }
-      __.validates :role,     inclusion: { in: roles }
-      __.validates :purpose,  inclusion: { in: purposes }
-    end
-
-    # Notification / callback wrappers
-    [ :save, :create, :update, :destroy ].each do |action|
-      # Create create_address, create_shipping_address etc
-      class_eval <<-METHOD, __FILE__, __LINE__ + 1
-        def #{action}_address_notification
-          if addressable
-            task = [ :#{action}, purpose, :address ].join('_').to_sym
-            addressable.altered_address self do
-              addressable.run_callbacks :#{action}_address do
-                addressable.run_callbacks task do
-                  yield
-                end
+  # Notification / callback wrappers
+  [ :save, :create, :update, :destroy ].each do |action|
+    # Create create_address, create_shipping_address etc
+    # TODO can we extract out a parametered method to clean up class_eval?
+    class_eval <<-METHOD, __FILE__, __LINE__ + 1
+      def #{action}_address_notification
+        if addressable
+          task = [ :#{action}, purpose, :address ].join('_').to_sym
+          addressable.altered_address self do
+            addressable.run_callbacks :#{action}_address do
+              addressable.run_callbacks task do
+                yield
               end
             end
-          else
-            yield
           end
+        else
+          yield
         end
-      METHOD
-      # Register the events we created to the newly created method above
-      event    = ('around_%s' % action).to_sym
-      callback = ('%s_address_notification' % action).to_sym
-      __send__ event, callback
-    end
-
+      end
+    METHOD
+    # Register the events we created to the newly created method above
+    event    = ('around_%s' % action).to_sym
+    callback = ('%s_address_notification' % action).to_sym
+    __send__ event, callback
   end
 
   # Physical location
@@ -155,7 +150,7 @@ module Chequeout::Address
 
   # Details as a hash table
   def details
-    attributes.slice *DETAIL_FIELDS.collect(&:to_s)
+    attributes.to_options.slice *DETAIL_FIELDS
   end
 
   # Copy fields from another address

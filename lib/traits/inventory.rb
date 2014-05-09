@@ -1,20 +1,19 @@
 # == Allows the tracking of sotck for purchasable items
-module Chequeout::Inventory
+Chequeout.define_feature :inventory do |feature|
 
   # == Product Inventory Management
   # Adds a stock_levels field to track stock levels
   # If stock_levels is set to nil, the product will not have inventory tracking
   # Creates model callbacks: out_of_stock, stock_replenished
-  module ItemManagement
-    when_included do
-      Database.register :item_stockable do |table|
-        table.integer :stock_levels
-        table.index   :stock_levels
-      end
-      register_callback_events :stock_replenished, :out_of_stock
-      scope :out_of_stock,  -> { where 'stock_levels <= 0' }
-      scope :in_stock,      -> { where 'stock_levels > 0' }
+  feature.behaviour_for :product do |item|
+    item.database_strcuture do |table|
+      table.integer :stock_levels
+      table.index   :stock_levels
     end
+
+    register_callback_events :stock_replenished, :out_of_stock
+    scope :out_of_stock,  -> { where 'stock_levels <= 0' }
+    scope :in_stock,      -> { where 'stock_levels > 0' }
 
     # See if a product has the number of items avaliable to purchase
     def has_inventory?(amount)
@@ -76,27 +75,22 @@ module Chequeout::Inventory
     end
   end
 
-  module FeeAdjustment
-    when_included do
-      Database.register :purchase_refundable do |table|
+  [ :fee_adjustment, :purchase_item ].each do |model|
+    feature.behaviour_for model do |item|
+      item.database_strcuture do |table|
         table.integer :quantity
       end
     end
   end
 
   # == Add to purchase items to ensure inventory rules are applied
-  module Purchaseable
-    when_included do
-      Database.register :purchase_inventory do |table|
-        table.integer :quantity
-      end
-      before_save :update_inventory
-      before_destroy :restock_items
-      validates :quantity, numericality: { only_integer: true }
-      after_save :remove_zero_quantity_items, :reset_old_quantity # Note a `before` callback will cause errors
-      after_destroy :reset_old_quantity
-      attr_reader :old_quantity
-    end
+  feature.behaviour_for :purchase_item do |item|
+    before_save :update_inventory
+    before_destroy :restock_items
+    validates :quantity, numericality: { only_integer: true }
+    after_save :remove_zero_quantity_items, :reset_old_quantity # Note a `before` callback will cause errors
+    after_destroy :reset_old_quantity
+    attr_reader :old_quantity
 
     # Used because on destroy the quantity_modified is probably 0
     def restock_items
