@@ -16,7 +16,7 @@ describe :tax do
 
     it 'integrates with purchased items' do
       purchase = order.purchase_items.first
-      expect(purchase.tax_rate.to_s).to eq '0.2'
+      expect('%0.2f' % purchase.tax_rate).to eq '0.20'
       expect(purchase.tax_cost).to eq(GBP '4.00')
     end
 
