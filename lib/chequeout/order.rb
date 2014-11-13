@@ -54,9 +54,9 @@ Chequeout.define_model :order do |item|
   scope :purchased_after,     -> time { where '%s.created_at > ?' % table_name, time_convert.call(time) }
   scope :purchased_before,    -> time { where '%s.created_at < ?' % table_name, time_convert.call(time) }
   scope :by_status,           -> status { where status: status }
-  scope :in_order_of_payment, -> { order '%s.payment_date DESC' % table_name }
+  scope :in_order_of_payment, -> { order payment_date: :desc }
   scope :has_item, -> item {
-    select('DISTINCT %s.*' % table_name).
+    distinct.
     joins(:purchase_items).
     merge item.model(:purchase_item).by_item(item)
   }
