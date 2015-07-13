@@ -1,6 +1,7 @@
 require 'active_support/all'
 require 'active_record'
 require 'monetize/core_extensions'
+require 'forwardable'
 require 'monetize'
 require 'money'
 require 'set'

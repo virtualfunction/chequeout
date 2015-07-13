@@ -1,6 +1,7 @@
 # Configure Rails Envinronment
 ENV['RAILS_ENV'] = 'test'
 require 'rubygems'
+require 'yaml'
 require 'factory_girl_rails'
 require 'rspec/expectations'
 require './lib/chequeout'

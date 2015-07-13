@@ -127,7 +127,7 @@ Chequeout.define_model :address do |item|
     :region,
     :country,
     :postal_code
-  ].freeze
+  ].freeze unless defined? LOCATION_FIELDS
 
   # Contact fields and name
   CONTACT_FIELDS = [
@@ -135,9 +135,9 @@ Chequeout.define_model :address do |item|
     :phone,
     :first_name,
     :last_name,
-  ].freeze
+  ].freeze unless defined? CONTACT_FIELDS
 
-  DETAIL_FIELDS = (CONTACT_FIELDS + LOCATION_FIELDS).freeze
+  DETAIL_FIELDS = (CONTACT_FIELDS + LOCATION_FIELDS).freeze unless defined? DETAIL_FIELDS
 
   def name
     [ first_name, last_name ].compact.join ' '
